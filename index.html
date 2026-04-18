@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="monte-carlo.js"></script>
 <style>
 :root {
   --green: #1a6b4a;
@@ -1743,6 +1744,21 @@ function calculate() {
     }
   });
 
+    // ═══ RUN MONTE CARLO SIMULATION ═══
+const mcParams = {
+  initialPortfolio: totalPortfolio,
+  lifeExp: parseInt(document.getElementById('lifeExp').value),
+  retireAge: parseInt(document.getElementById('retireAge').value),
+  annualExpenses: parseInt(document.getElementById('retireExpenses').value) * 12,
+  annualIncome: (cpfLifePayout || 0) * 12
+};
+
+const mc = new MonteCarloSimulation(mcParams);
+const mcResults = mc.run();
+
+// Display results
+displayMonteCarloResults(mcResults);
+  
   // Recommendations
   const recs = [];
   if (cpfSATopup < 7000 && g('cpfSA') < (cpfScheme === 'FRS' ? 213000 : 105000)) {
