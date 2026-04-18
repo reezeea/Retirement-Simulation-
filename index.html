@@ -1800,6 +1800,80 @@ displayMonteCarloResults(mcResults);
   document.getElementById('results-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+  function displayMonteCarloResults(results) {
+  const resultsPanel = document.querySelector('.results-panel');
+  
+  const riskHtml = `
+    <div class="chart-card">
+      <h3>🎲 Monte Carlo Risk Analysis (10,000 Simulations)</h3>
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-label">Success Probability</div>
+          <div class="metric-val ${results.successRate >= 85 ? 'good' : results.successRate >= 70 ? 'warn' : 'bad'}">
+            ${results.successRate.toFixed(1)}%
+          </div>
+          <div class="metric-sub">${results.successCount.toLocaleString()} of 10,000 paths</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Worst Case (10th %ile)</div>
+          <div class="metric-val bad">S$${(results.percentile10 || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Likely Case (50th %ile)</div>
+          <div class="metric-val">S$${(results.percentile50 || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Best Case (90th %ile)</div>
+          <div class="metric-val good">S$${(results.percentile90 || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
+        </div>
+      </div>
+      <canvas id="mcOutcomeChart" style="max-height:300px; margin-top:1rem;"></canvas>
+    </div>
+  `;
+  
+  resultsPanel.insertAdjacentHTML('beforeend', riskHtml);
+  
+  // Draw histogram
+  const ctx = document.getElementById('mcOutcomeChart');
+  if (ctx) {
+    const bins = 50;
+    const minVal = results.minBalance;
+    const maxVal = results.maxBalance;
+    const binSize = (maxVal - minVal) / bins;
+    const histogram = new Array(bins).fill(0);
+    
+    results.finalBalances.forEach(balance => {
+      const binIndex = Math.floor((balance - minVal) / binSize);
+      if (binIndex >= 0 && binIndex < bins) histogram[binIndex]++;
+    });
+    
+    new Chart(ctx.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: histogram.map((_, i) => `S$${((minVal + i * binSize) / 1000).toFixed(0)}k`),
+        datasets: [{
+          label: 'Final Portfolio Values',
+          data: histogram,
+          backgroundColor: 'rgba(26, 107, 74, 0.7)',
+          borderColor: 'rgba(26, 107, 74, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          title: { display: true, text: 'Distribution of Outcomes (10,000 Simulations)' }
+        },
+        scales: {
+          x: { beginAtZero: true }
+        }
+      }
+    });
+  }
+}
+  
 // ── INIT ────────────────────────────────────────────────────────────────────
 loadFromURL();
 // Active nav highlight on scroll
