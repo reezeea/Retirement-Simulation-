@@ -1888,5 +1888,415 @@ const observer = new IntersectionObserver(entries => {
 }, { rootMargin: '-30% 0px -60% 0px' });
 sections.forEach(s => observer.observe(s));
 </script>
+<!-- Add this at the very end of index.html, just before </body> -->
+<script>
+// ═══════════════════════════════════════════════════════════════
+// MAIN APPLICATION LOGIC - CONNECTS FORM TO MONTE CARLO ENGINE
+// ═══════════════════════════════════════════════════════════════
+
+let incomeStreamCount = 1;
+let propertyCount = 1;
+
+// ── FORM HELPER FUNCTIONS ────────────────────────────────────
+function getVal(id) {
+  return parseFloat(document.getElementById(id)?.value || 0);
+}
+
+function getText(id) {
+  return document.getElementById(id)?.value || '';
+}
+
+function setVal(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.value = value;
+}
+
+function show(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = '';
+}
+
+function hide(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = 'none';
+}
+
+// ── PROPERTY MANAGEMENT ──────────────────────────────────────
+function updatePropFields(idx, propType) {
+  if (propType === 'none') {
+    hide(`rental-field-${idx}`);
+    hide(`downgrade-field-${idx}`);
+  } else if (propType.includes('rent')) {
+    show(`rental-field-${idx}`);
+    hide(`downgrade-field-${idx}`);
+  } else {
+    hide(`rental-field-${idx}`);
+    show(`downgrade-field-${idx}`);
+  }
+}
+
+function addProperty() {
+  const container = document.getElementById('property-rows');
+  const newIdx = propertyCount++;
+  const html = `
+    <div class="subsection" id="prop-${newIdx}">
+      <div class="subsection-title">Additional property ${newIdx}</div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Property type</label>
+          <select onchange="updatePropFields(${newIdx}, this.value)" id="propType-${newIdx}">
+            <option value="none">No property</option>
+            <option value="hdb_own">HDB (own stay)</option>
+            <option value="hdb_rent">HDB (rent out room)</option>
+            <option value="condo_own">Private Condo (own stay)</option>
+            <option value="condo_invest">Private Condo (investment/rent)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Current market value (S$)</label>
+          <div class="prefix-wrap" data-prefix="$">
+            <input type="number" id="propValue-${newIdx}" value="0">
+          </div>
+        </div>
+        <div class="field">
+          <label>Outstanding mortgage (S$)</label>
+          <div class="prefix-wrap" data-prefix="$">
+            <input type="number" id="mortgage-${newIdx}" value="0">
+          </div>
+        </div>
+        <div class="field">
+          <label>Mortgage monthly payment (S$)</label>
+          <div class="prefix-wrap" data-prefix="$">
+            <input type="number" id="mortgagePayment-${newIdx}" value="0">
+          </div>
+        </div>
+        <div class="field" id="rental-field-${newIdx}" style="display:none">
+          <label>Monthly rental income (S$)</label>
+          <div class="prefix-wrap" data-prefix="$">
+            <input type="number" id="rental-${newIdx}" value="0">
+          </div>
+        </div>
+        <div class="field">
+          <label>Plan at retirement</label>
+          <select id="propPlan-${newIdx}">
+            <option value="keep_live">Keep & live in it</option>
+            <option value="keep_rent">Keep & rent fully</option>
+            <option value="downgrade">Downgrade (release equity)</option>
+            <option value="sell">Sell</option>
+          </select>
+        </div>
+        <div class="field" id="downgrade-field-${newIdx}" style="display:none">
+          <label>Downgrade proceeds (S$)</label>
+          <div class="prefix-wrap" data-prefix="$">
+            <input type="number" id="downgradeProceeds-${newIdx}" value="0">
+          </div>
+        </div>
+      </div>
+      <button class="remove-btn" onclick="removeProperty(${newIdx})" style="margin-top:1rem; width:auto; padding:8px 12px">Delete property</button>
+    </div>
+  `;
+  container.insertAdjacentHTML('beforeend', html);
+}
+
+function removeProperty(idx) {
+  const el = document.getElementById(`prop-${idx}`);
+  if (el) el.remove();
+}
+
+// ── INCOME STREAM MANAGEMENT ────────────────────────────────
+function addIncomeStream() {
+  const container = document.getElementById('income-streams');
+  const newIdx = incomeStreamCount++;
+  const html = `
+    <div class="income-row" id="income-${newIdx}">
+      <div class="field">
+        <label>Income source</label>
+        <select id="incomeType-${newIdx}">
+          <option value="business">Business income</option>
+          <option value="freelance">Freelance / consulting</option>
+          <option value="dividends">Dividends</option>
+          <option value="rental_other">Other rental</option>
+          <option value="passive">Other passive</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Monthly (S$)</label>
+        <div class="prefix-wrap" data-prefix="$">
+          <input type="number" id="incomeAmt-${newIdx}" value="0">
+        </div>
+      </div>
+      <button class="remove-btn" onclick="removeIncome(${newIdx})">×</button>
+    </div>
+  `;
+  container.insertAdjacentHTML('beforeend', html);
+}
+
+function removeIncome(idx) {
+  const el = document.getElementById(`income-${idx}`);
+  if (el) el.remove();
+}
+
+// ── VISIBILITY TOGGLES ───────────────────────────────────────
+function setupVisibilityToggles() {
+  document.getElementById('businessContinues')?.addEventListener('change', (e) => {
+    if (e.target.value === 'partial') {
+      show('partialIncomeField');
+    } else {
+      hide('partialIncomeField');
+    }
+  });
+
+  document.getElementById('propPlan-0')?.addEventListener('change', (e) => {
+    if (e.target.value === 'downgrade') {
+      show('downgrade-field-0');
+    } else {
+      hide('downgrade-field-0');
+    }
+  });
+}
+
+// ── DATA AGGREGATION ─────────────────────────────────────────
+function getTotalAssets() {
+  // CPF + Cash + Investments
+  const cpf = getVal('cpfOA') + getVal('cpfSA') + getVal('cpfMA');
+  const liquid = getVal('cash') + getVal('srs') + getVal('sgStocks') + 
+                 getVal('foreignStocks') + getVal('bonds') + getVal('insurance');
+  
+  // Property equity
+  let propertyEquity = 0;
+  for (let i = 0; i < propertyCount; i++) {
+    const value = getVal(`propValue-${i}`);
+    const mortgage = getVal(`mortgage-${i}`);
+    if (value > 0) propertyEquity += (value - mortgage);
+  }
+  
+  return cpf + liquid + propertyEquity;
+}
+
+function getAnnualExpenses() {
+  const monthlyRetire = getVal('retireExpenses');
+  return monthlyRetire * 12;
+}
+
+function getAnnualIncome() {
+  // CPF LIFE payout at retirement age
+  const cpfScheme = getText('cpfScheme');
+  let cpfMonthly = 0;
+  if (cpfScheme === 'BRS') cpfMonthly = 900;
+  else if (cpfScheme === 'FRS') cpfMonthly = 1700;
+  else if (cpfScheme === 'ERS') cpfMonthly = 2400;
+  
+  // Business/side income post-retirement
+  let businessIncome = 0;
+  const businessContinues = getText('businessContinues');
+  if (businessContinues === 'yes') {
+    for (let i = 0; i < incomeStreamCount; i++) {
+      businessIncome += getVal(`incomeAmt-${i}`);
+    }
+  } else if (businessContinues === 'partial') {
+    businessIncome = getVal('postRetireBizIncome');
+  }
+  
+  // Rental income from properties
+  let rentalIncome = 0;
+  for (let i = 0; i < propertyCount; i++) {
+    const plan = getText(`propPlan-${i}`);
+    if (plan === 'keep_rent' || plan.includes('rent')) {
+      rentalIncome += getVal(`rental-${i}`) * 12;
+    }
+  }
+  
+  return (cpfMonthly + businessIncome) * 12 + rentalIncome;
+}
+
+// ── MAIN CALCULATION ────────────────────────────────────────
+function calculate() {
+  const age = getVal('age');
+  const retireAge = getVal('retireAge');
+  const lifeExp = getVal('lifeExp');
+  
+  if (age >= retireAge) {
+    alert('Current age must be less than retirement age');
+    return;
+  }
+  
+  if (retireAge > lifeExp) {
+    alert('Retirement age cannot exceed life expectancy');
+    return;
+  }
+
+  // Create simulation parameters
+  const params = {
+    lifeExp: lifeExp,
+    retireAge: retireAge,
+    initialPortfolio: getTotalAssets(),
+    annualExpenses: getAnnualExpenses(),
+    annualIncome: getAnnualIncome()
+  };
+
+  // Run Monte Carlo
+  const sim = new MonteCarloSimulation(params);
+  const results = sim.run();
+  
+  // Display results
+  displayResults(results, params);
+  
+  // Scroll to results
+  document.querySelector('.results-panel').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ── RESULTS DISPLAY ────────────────────────────────────────
+function displayResults(results, params) {
+  const panel = document.querySelector('.results-panel');
+  
+  // Show results panel
+  panel.style.display = 'block';
+  
+  // Determine verdict
+  const successRate = results.successRate;
+  let verdict = 'pass';
+  let icon = '✓';
+  let message = 'You\'re on track!';
+  
+  if (successRate < 75) {
+    verdict = 'tight';
+    icon = '⚠';
+    message = 'Retirement is possible, but tight.';
+  }
+  if (successRate < 50) {
+    verdict = 'fail';
+    icon = '✗';
+    message = 'Retirement at target age may not be achievable.';
+  }
+
+  // Update verdict banner
+  const bannerHTML = `
+    <div class="verdict-banner ${verdict}">
+      <div class="verdict-icon">${icon}</div>
+      <div class="verdict-text">
+        <h2>${message}</h2>
+        <p>Based on 10,000 Monte Carlo simulations with realistic market volatility.</p>
+        <div class="verdict-nums">
+          <span><strong>${successRate.toFixed(1)}%</strong> success rate</span>
+          <span><strong>S$${results.percentile50.toLocaleString('en-SG', {maximumFractionDigits: 0})}</strong> median final balance</span>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  const verdictContainer = panel.querySelector('.verdict-banner') || document.createElement('div');
+  verdictContainer.innerHTML = bannerHTML;
+  if (!verdictContainer.parentElement) {
+    panel.insertBefore(verdictContainer, panel.firstChild);
+  }
+
+  // Update metrics grid
+  const metricsHTML = `
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Initial portfolio</div>
+        <div class="metric-val">S$${(params.initialPortfolio / 1000).toFixed(0)}K</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Annual expenses (retired)</div>
+        <div class="metric-val">S$${(params.annualExpenses / 1000).toFixed(0)}K</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Annual income (retired)</div>
+        <div class="metric-val">S$${(params.annualIncome / 1000).toFixed(0)}K</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Years in retirement</div>
+        <div class="metric-val">${params.lifeExp - params.retireAge}</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">10th percentile</div>
+        <div class="metric-val">S$${(results.percentile10 / 1000).toFixed(0)}K</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">90th percentile</div>
+        <div class="metric-val">S$${(results.percentile90 / 1000).toFixed(0)}K</div>
+      </div>
+    </div>
+  `;
+  
+  const metricsContainer = panel.querySelector('.metrics-grid') || document.createElement('div');
+  metricsContainer.innerHTML = metricsHTML;
+  if (!metricsContainer.parentElement) {
+    verdictContainer.insertAdjacentHTML('afterend', metricsHTML);
+  }
+}
+
+// ── URL SAVE/LOAD ──────────────────────────────────────────
+function saveToURL() {
+  const data = {
+    age: getVal('age'),
+    retireAge: getVal('retireAge'),
+    lifeExp: getVal('lifeExp'),
+    salary: getVal('salary'),
+    expenses: getVal('expenses'),
+    retireExpenses: getVal('retireExpenses'),
+    cpfOA: getVal('cpfOA'),
+    cpfSA: getVal('cpfSA'),
+    cpfMA: getVal('cpfMA'),
+    cash: getVal('cash'),
+    cpfScheme: getText('cpfScheme')
+  };
+  
+  const encoded = btoa(JSON.stringify(data));
+  const url = `${window.location.origin}${window.location.pathname}?data=${encoded}`;
+  
+  // Copy to clipboard
+  navigator.clipboard.writeText(url).then(() => {
+    alert('Inputs saved to clipboard!');
+  });
+}
+
+function loadFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  const data = params.get('data');
+  
+  if (data) {
+    try {
+      const decoded = JSON.parse(atob(data));
+      for (const [key, value] of Object.entries(decoded)) {
+        setVal(key, value);
+      }
+    } catch (e) {
+      console.error('Failed to load URL data:', e);
+    }
+  }
+}
+
+// ── INITIALIZATION ────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  setupVisibilityToggles();
+  loadFromURL();
+  
+  // Navigation highlighting
+  const navItems = document.querySelectorAll('.nav-item');
+  const cards = document.querySelectorAll('.card');
+  
+  window.addEventListener('scroll', () => {
+    let current = '';
+    cards.forEach(card => {
+      const rect = card.getBoundingClientRect();
+      if (rect.top <= window.innerHeight / 2) {
+        current = card.id;
+      }
+    });
+    
+    navItems.forEach(item => {
+      item.classList.remove('active');
+      if (item.getAttribute('href') === `#${current}`) {
+        item.classList.add('active');
+      }
+    });
+  });
+});
+</script>
+</body>
+</html>
+  
 </body>
 </html>
