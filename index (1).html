@@ -1,0 +1,2058 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SG Retirement Simulator — Monte Carlo</title>
+<meta name="description" content="Professional Singapore retirement simulator with Monte Carlo analysis, CPF LIFE, regime-switching, fan charts.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+/* ════════════════════════════════════════════════════════════
+   RESET & DESIGN TOKENS
+════════════════════════════════════════════════════════════ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  /* Ink / Surface */
+  --bg:#0a0e14;
+  --bg2:#0f1520;
+  --bg3:#141c2a;
+  --panel:#131a27;
+  --panel-b:#1a2437;
+  --border:rgba(255,255,255,.08);
+  --border-focus:rgba(100,200,255,.4);
+
+  /* Text */
+  --t1:#e8edf5;
+  --t2:#8fa3c0;
+  --t3:#536070;
+  --t4:#3a4a5c;
+
+  /* Accent palette */
+  --a1:#00d4ff;    /* cyan — primary */
+  --a2:#0099cc;
+  --a3:rgba(0,212,255,.12);
+  --green:#00e676;
+  --green-bg:rgba(0,230,118,.1);
+  --amber:#ffb300;
+  --amber-bg:rgba(255,179,0,.1);
+  --red:#ff4757;
+  --red-bg:rgba(255,71,87,.1);
+  --purple:#a78bfa;
+
+  /* Type */
+  --sans:'IBM Plex Sans',sans-serif;
+  --mono:'IBM Plex Mono',monospace;
+
+  /* Geometry */
+  --r:6px; --r2:10px; --r3:16px;
+  --sh:0 2px 8px rgba(0,0,0,.3);
+  --sh2:0 8px 32px rgba(0,0,0,.4);
+}
+
+html{scroll-behavior:smooth;font-size:14px}
+body{
+  font-family:var(--sans);
+  background:var(--bg);
+  color:var(--t1);
+  min-height:100vh;
+  line-height:1.6;
+  overflow-x:hidden;
+}
+
+/* ════════════════════════════════════════════════════════════
+   HEADER
+════════════════════════════════════════════════════════════ */
+.header{
+  background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  padding:1.25rem 2rem;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:1rem;
+  position:sticky;top:0;z-index:100;
+}
+.logo{
+  display:flex;align-items:center;gap:.75rem;
+}
+.logo-mark{
+  width:36px;height:36px;border-radius:8px;
+  background:linear-gradient(135deg,var(--a1),var(--a2));
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;flex-shrink:0;
+}
+.logo-text{font-size:15px;font-weight:600;letter-spacing:-.02em}
+.logo-sub{font-size:11px;color:var(--t3);font-weight:400;font-family:var(--mono)}
+.header-pills{display:flex;gap:.5rem;flex-wrap:wrap}
+.hpill{
+  font-size:10px;font-weight:600;font-family:var(--mono);
+  padding:3px 9px;border-radius:20px;letter-spacing:.05em;
+  background:var(--a3);border:1px solid rgba(0,212,255,.2);color:var(--a1);
+}
+
+/* ════════════════════════════════════════════════════════════
+   LAYOUT
+════════════════════════════════════════════════════════════ */
+.layout{
+  display:grid;
+  grid-template-columns:380px 1fr;
+  min-height:calc(100vh - 65px);
+}
+@media(max-width:960px){.layout{grid-template-columns:1fr}}
+
+/* ════════════════════════════════════════════════════════════
+   SIDEBAR
+════════════════════════════════════════════════════════════ */
+.sidebar{
+  background:var(--bg2);
+  border-right:1px solid var(--border);
+  overflow-y:auto;
+  overflow-x:hidden;
+  height:calc(100vh - 65px);
+  position:sticky;top:65px;
+}
+.sidebar::-webkit-scrollbar{width:4px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+
+/* ════════════════════════════════════════════════════════════
+   ACCORDION SECTIONS
+════════════════════════════════════════════════════════════ */
+.section{border-bottom:1px solid var(--border)}
+.sec-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:.85rem 1.25rem;cursor:pointer;
+  transition:background .12s;user-select:none;gap:.75rem;
+}
+.sec-head:hover{background:rgba(255,255,255,.02)}
+.sec-head-left{display:flex;align-items:center;gap:.6rem}
+.sec-icon{font-size:14px;width:20px;text-align:center;flex-shrink:0}
+.sec-title{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--t2)}
+.sec-chev{
+  font-size:10px;color:var(--t3);transition:transform .2s;flex-shrink:0;
+  width:16px;height:16px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+}
+.sec-chev.open{transform:rotate(180deg)}
+.sec-body{padding:1rem 1.25rem 1.25rem;display:flex;flex-direction:column;gap:.75rem}
+.sec-body.hidden{display:none}
+
+/* ════════════════════════════════════════════════════════════
+   FORM COMPONENTS
+════════════════════════════════════════════════════════════ */
+.field{display:flex;flex-direction:column;gap:5px}
+.field-label{
+  font-size:11px;font-weight:600;color:var(--t2);
+  letter-spacing:.05em;text-transform:uppercase;
+  display:flex;align-items:center;gap:5px;
+}
+.field-hint{font-size:10px;color:var(--t3);line-height:1.5;margin-top:2px}
+.field-error{font-size:10px;color:var(--red);margin-top:2px;display:none}
+
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.6rem}
+
+.input-wrap{position:relative;display:flex;align-items:center}
+.input-pfx,.input-sfx{
+  position:absolute;font-size:12px;color:var(--t3);
+  font-family:var(--mono);pointer-events:none;z-index:1;
+  line-height:1;
+}
+.input-pfx{left:10px}
+.input-sfx{right:10px}
+
+input[type=number],input[type=text],select,textarea{
+  width:100%;
+  padding:8px 10px;
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-radius:var(--r);
+  font-family:var(--mono);font-size:13px;color:var(--t1);
+  outline:none;
+  transition:border-color .15s,box-shadow .15s;
+  -moz-appearance:textfield;
+  appearance:none;
+}
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
+input:focus,select:focus{
+  border-color:var(--border-focus);
+  box-shadow:0 0 0 3px rgba(0,212,255,.08);
+}
+input.error{border-color:var(--red);box-shadow:0 0 0 3px rgba(255,71,87,.08)}
+input:disabled,select:disabled{opacity:.4;cursor:not-allowed}
+
+.has-pfx input{padding-left:22px}
+.has-sfx input{padding-right:30px}
+
+select{cursor:pointer}
+select option{background:var(--bg3);color:var(--t1)}
+
+/* Tooltip */
+.tip{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:14px;height:14px;border-radius:50%;
+  background:var(--border);color:var(--t3);
+  font-size:9px;font-weight:700;cursor:help;
+  position:relative;font-family:var(--sans);
+}
+.tip::after{
+  content:attr(data-tip);
+  position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
+  background:var(--panel-b);border:1px solid var(--border);
+  color:var(--t1);font-size:11px;font-weight:400;font-family:var(--sans);
+  padding:6px 10px;border-radius:var(--r);
+  width:200px;white-space:normal;line-height:1.4;
+  pointer-events:none;opacity:0;transition:opacity .15s;
+  z-index:200;box-shadow:var(--sh2);
+}
+.tip:hover::after{opacity:1}
+
+/* ════════════════════════════════════════════════════════════
+   ASSET ROWS
+════════════════════════════════════════════════════════════ */
+.asset-row{
+  background:var(--bg3);border:1px solid var(--border);
+  border-radius:var(--r2);padding:.75rem;
+  display:flex;flex-direction:column;gap:.6rem;
+  position:relative;
+}
+.asset-row-head{
+  display:flex;align-items:center;gap:.5rem;
+}
+.asset-name-inp{
+  flex:1;background:none;border:none;border-bottom:1px solid var(--border);
+  color:var(--t1);font-size:13px;font-family:var(--sans);font-weight:500;
+  padding:2px 0;outline:none;transition:border-color .12s;
+}
+.asset-name-inp:focus{border-color:var(--a1)}
+.asset-del{
+  background:none;border:none;color:var(--t3);cursor:pointer;
+  font-size:16px;line-height:1;padding:0 2px;transition:color .12s;flex-shrink:0;
+}
+.asset-del:hover{color:var(--red)}
+
+.add-btn{
+  background:none;border:1px dashed var(--border);
+  border-radius:var(--r);padding:7px;
+  font-size:12px;font-weight:600;font-family:var(--sans);
+  color:var(--t3);cursor:pointer;text-align:center;
+  transition:all .15s;width:100%;
+}
+.add-btn:hover{border-color:var(--a1);color:var(--a1);background:var(--a3)}
+
+/* ════════════════════════════════════════════════════════════
+   SEGMENT CONTROLS
+════════════════════════════════════════════════════════════ */
+.seg{display:flex;border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.seg-btn{
+  flex:1;padding:7px 4px;text-align:center;
+  font-size:11px;font-weight:600;font-family:var(--sans);
+  letter-spacing:.04em;text-transform:uppercase;
+  background:none;border:none;color:var(--t3);cursor:pointer;
+  transition:all .12s;
+}
+.seg-btn:not(:last-child){border-right:1px solid var(--border)}
+.seg-btn.on{background:var(--a1);color:#000}
+
+/* ════════════════════════════════════════════════════════════
+   RUN BUTTON
+════════════════════════════════════════════════════════════ */
+.run-area{padding:1rem 1.25rem;border-top:1px solid var(--border)}
+.btn-run{
+  width:100%;padding:12px;
+  background:linear-gradient(135deg,var(--a1),var(--a2));
+  color:#000;border:none;border-radius:var(--r2);
+  font-family:var(--sans);font-size:14px;font-weight:700;
+  cursor:pointer;letter-spacing:.03em;
+  transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.btn-run:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(0,212,255,.3)}
+.btn-run:active{transform:translateY(0)}
+.btn-run:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+.spinner{
+  display:none;width:15px;height:15px;
+  border:2px solid rgba(0,0,0,.2);border-top-color:#000;
+  border-radius:50%;animation:spin .7s linear infinite;
+}
+.btn-run.running .btn-label{display:none}
+.btn-run.running .spinner{display:block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.prog-bar{height:2px;background:var(--border);margin-top:.5rem;border-radius:2px;overflow:hidden}
+.prog-fill{height:100%;width:0;background:linear-gradient(90deg,var(--a1),var(--purple));transition:width .08s}
+.run-note{font-size:10px;color:var(--t3);text-align:center;margin-top:.5rem;line-height:1.6}
+
+/* ════════════════════════════════════════════════════════════
+   MAIN CONTENT
+════════════════════════════════════════════════════════════ */
+.main{padding:1.5rem;display:flex;flex-direction:column;gap:1.25rem;overflow-x:hidden}
+
+/* Placeholder */
+.placeholder{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:60vh;gap:1rem;color:var(--t3);text-align:center;
+}
+.ph-icon{font-size:52px;margin-bottom:.5rem}
+.ph-title{font-size:17px;font-weight:600;color:var(--t2)}
+.ph-sub{font-size:13px;max-width:340px;line-height:1.7}
+
+/* ════════════════════════════════════════════════════════════
+   RESULTS
+════════════════════════════════════════════════════════════ */
+.results{display:none;flex-direction:column;gap:1.25rem}
+.results.show{display:flex}
+
+/* Verdict banner */
+.verdict{
+  border-radius:var(--r3);padding:1.5rem;
+  display:flex;align-items:flex-start;gap:1.25rem;
+  border:1px solid;
+}
+.verdict.safe{background:var(--green-bg);border-color:rgba(0,230,118,.25)}
+.verdict.warn{background:var(--amber-bg);border-color:rgba(255,179,0,.25)}
+.verdict.fail{background:var(--red-bg);border-color:rgba(255,71,87,.25)}
+.v-emoji{font-size:42px;line-height:1;flex-shrink:0}
+.v-body h2{font-size:20px;font-weight:700;letter-spacing:-.02em;margin-bottom:4px}
+.v-body p{font-size:13px;color:var(--t2);line-height:1.6;max-width:600px}
+.v-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:.85rem}
+.vchip{
+  font-size:12px;font-family:var(--mono);
+  padding:4px 10px;border-radius:5px;
+  background:rgba(255,255,255,.05);border:1px solid var(--border);
+}
+
+/* Metrics grid */
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem}
+.mc-card{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--r2);padding:1rem 1.1rem;
+}
+.mc-lbl{font-size:10px;color:var(--t2);font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px}
+.mc-val{font-size:22px;font-weight:700;font-family:var(--mono);letter-spacing:-.02em}
+.mc-val.g{color:var(--green)}
+.mc-val.r{color:var(--red)}
+.mc-val.a{color:var(--amber)}
+.mc-sub{font-size:10px;color:var(--t3);margin-top:3px}
+
+/* Tabs */
+.tabs{
+  display:flex;gap:2px;background:var(--panel);
+  border:1px solid var(--border);border-radius:var(--r2);padding:3px;
+  overflow-x:auto;scrollbar-width:none;
+}
+.tabs::-webkit-scrollbar{display:none}
+.tab-btn{
+  padding:6px 14px;border-radius:7px;
+  font-size:12px;font-weight:600;font-family:var(--sans);
+  color:var(--t3);background:none;border:none;cursor:pointer;
+  white-space:nowrap;transition:all .12s;letter-spacing:.03em;
+}
+.tab-btn:hover{color:var(--t1)}
+.tab-btn.on{background:rgba(255,255,255,.08);color:var(--t1)}
+
+.tab-pane{display:none}
+.tab-pane.on{display:flex;flex-direction:column;gap:1rem}
+
+/* Chart cards */
+.chart-card{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--r2);padding:1.25rem 1.5rem;
+}
+.chart-card h3{font-size:14px;font-weight:600;letter-spacing:-.01em;margin-bottom:3px}
+.chart-desc{font-size:12px;color:var(--t2);margin-bottom:1rem;line-height:1.6;max-width:600px}
+.chart-wrap{position:relative;width:100%}
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:.75rem}
+.leg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2)}
+.leg-swatch{width:12px;height:3px;border-radius:2px}
+.leg-swatch.band{height:10px;border-radius:3px;opacity:.6}
+
+/* Grid 2 col */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media(max-width:700px){.grid2{grid-template-columns:1fr}}
+
+/* Health check */
+.health-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.75rem;margin-bottom:.75rem}
+.health-item{
+  background:var(--bg3);border:1px solid var(--border);
+  border-radius:var(--r);padding:.85rem;
+}
+.health-lbl{font-size:10px;color:var(--t2);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+.health-val{font-size:21px;font-weight:700;font-family:var(--mono)}
+.health-sub{font-size:10px;color:var(--t3);margin-top:3px;line-height:1.4}
+
+/* Alert boxes */
+.alert{border-radius:var(--r);padding:.7rem 1rem;font-size:12px;line-height:1.6;border:1px solid}
+.alert.warn{background:var(--amber-bg);border-color:rgba(255,179,0,.25);color:var(--amber)}
+.alert.good{background:var(--green-bg);border-color:rgba(0,230,118,.25);color:var(--green)}
+.alert.info{background:var(--a3);border-color:rgba(0,212,255,.2);color:var(--a1)}
+
+/* Percentile table */
+.ptable{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
+.ptable th{
+  font-size:10px;font-weight:600;color:var(--t3);
+  text-transform:uppercase;letter-spacing:.05em;
+  padding:7px 10px;text-align:right;
+  background:var(--bg3);border-bottom:1px solid var(--border);
+}
+.ptable th:first-child{text-align:left}
+.ptable td{padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.03);text-align:right;color:var(--t1)}
+.ptable td:first-child{text-align:left;color:var(--t2)}
+.ptable tr.retire-row td{background:rgba(0,212,255,.05);font-weight:600;color:var(--a1)}
+.ptable tr:last-child td{border-bottom:none}
+
+/* Asset breakdown */
+.btable{width:100%;border-collapse:collapse;font-size:13px}
+.btable td{padding:8px 0;border-bottom:1px solid var(--border)}
+.btable td:last-child{text-align:right;font-family:var(--mono);font-weight:500}
+.btable tr:last-child td{border-bottom:none;font-weight:700;font-size:14px;padding-top:12px}
+
+/* Recs */
+.rec-list{list-style:none;display:flex;flex-direction:column;gap:.5rem}
+.rec-item{
+  display:flex;gap:.75rem;align-items:flex-start;
+  padding:.75rem;background:var(--bg3);
+  border:1px solid var(--border);border-radius:var(--r);
+  font-size:13px;line-height:1.6;
+}
+.rec-ico{
+  width:22px;height:22px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:700;margin-top:1px;
+}
+.rec-ico.info{background:rgba(0,212,255,.15);color:var(--a1)}
+.rec-ico.warn{background:rgba(255,179,0,.15);color:var(--amber)}
+.rec-ico.good{background:rgba(0,230,118,.15);color:var(--green)}
+.rec-ico.risk{background:rgba(255,71,87,.15);color:var(--red)}
+
+/* ════════════════════════════════════════════════════════════
+   DISCLAIMER
+════════════════════════════════════════════════════════════ */
+.footer{
+  grid-column:1/-1;
+  padding:1rem 1.5rem;
+  font-size:10px;color:var(--t3);
+  border-top:1px solid var(--border);
+  text-align:center;line-height:1.7;
+}
+.footer a{color:var(--t3);text-decoration:underline}
+
+/* ════════════════════════════════════════════════════════════
+   MOBILE
+════════════════════════════════════════════════════════════ */
+@media(max-width:960px){
+  .sidebar{height:auto;position:static;border-right:none;border-bottom:1px solid var(--border)}
+  .header-pills{display:none}
+  .layout{grid-template-columns:1fr}
+  .main{padding:1rem}
+}
+@media(max-width:600px){
+  .g2,.g3{grid-template-columns:1fr}
+  .metrics{grid-template-columns:1fr 1fr}
+  .grid2{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ─────────────────────────────────────────────────── -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-mark">🇸🇬</div>
+    <div>
+      <div class="logo-text">SG Retirement Simulator</div>
+      <div class="logo-sub">Monte Carlo · 2026 CPF Rates · S$8,000 OW Ceiling</div>
+    </div>
+  </div>
+  <div class="header-pills">
+    <span class="hpill">1–5K MC Runs</span>
+    <span class="hpill">Regime Switching</span>
+    <span class="hpill">Fat-Tail</span>
+    <span class="hpill">CPF LIFE BRS/FRS/ERS</span>
+    <span class="hpill">In-Browser · Private</span>
+  </div>
+</header>
+
+<div class="layout">
+
+<!-- ══════════════════════════════════════════════════════════
+     SIDEBAR
+══════════════════════════════════════════════════════════ -->
+<aside class="sidebar">
+
+  <!-- PERSONAL -->
+  <div class="section">
+    <div class="sec-head" onclick="toggleSec('personal')">
+      <div class="sec-head-left">
+        <span class="sec-icon">👤</span>
+        <span class="sec-title">Personal</span>
+      </div>
+      <span class="sec-chev open" id="chev-personal">▾</span>
+    </div>
+    <div class="sec-body" id="sb-personal">
+      <div class="g3">
+        <div class="field">
+          <label class="field-label" for="age">
+            Age
+            <span class="tip" data-tip="Your current age in years.">?</span>
+          </label>
+          <input type="number" id="age" value="35" min="18" max="69" required>
+          <div class="field-error" id="err-age">Must be 18–69</div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="retireAge">
+            Retire At
+            <span class="tip" data-tip="Target retirement age. Must be older than current age.">?</span>
+          </label>
+          <input type="number" id="retireAge" value="62" min="40" max="80" required>
+          <div class="field-error" id="err-retireAge">Must be > current age</div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="lifeExp">
+            Life To
+            <span class="tip" data-tip="Planning horizon. Singaporeans average ~83 (M) / ~86 (F). Conservative planners use 90–95.">?</span>
+          </label>
+          <input type="number" id="lifeExp" value="90" min="65" max="105" required>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- INCOME -->
+  <div class="section">
+    <div class="sec-head" onclick="toggleSec('income')">
+      <div class="sec-head-left">
+        <span class="sec-icon">💼</span>
+        <span class="sec-title">Income</span>
+      </div>
+      <span class="sec-chev open" id="chev-income">▾</span>
+    </div>
+    <div class="sec-body" id="sb-income">
+      <div class="field">
+        <label class="field-label" for="salary">Monthly Gross Salary (S$)</label>
+        <div class="input-wrap has-pfx">
+          <span class="input-pfx">$</span>
+          <input type="number" id="salary" value="6000" min="0" max="100000">
+        </div>
+        <div class="field-hint">Before CPF deductions</div>
+      </div>
+      <div class="g2">
+        <div class="field">
+          <label class="field-label" for="bonusMths">
+            Bonus (Months)
+            <span class="tip" data-tip="Annual bonus as number of months' salary. E.g. AWS = 1 month.">?</span>
+          </label>
+          <input type="number" id="bonusMths" value="1" min="0" max="12" step="0.5">
+        </div>
+        <div class="field">
+          <label class="field-label" for="salaryGrowth">Annual Increment %</label>
+          <div class="input-wrap has-sfx">
+            <span class="input-sfx">%</span>
+            <input type="number" id="salaryGrowth" value="3" min="0" max="20" step="0.5">
+          </div>
+        </div>
+      </div>
+      <div class="g2">
+        <div class="field">
+          <label class="field-label" for="srsMonthly">
+            Monthly SRS Top-up
+            <span class="tip" data-tip="SRS (Supplementary Retirement Scheme) contributions. SC/PR cap is S$15,300/yr. Tax-deductible.">?</span>
+          </label>
+          <div class="input-wrap has-pfx">
+            <span class="input-pfx">$</span>
+            <input type="number" id="srsMonthly" value="0" min="0" max="1500">
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="srsRet">SRS Return %/yr</label>
+          <div class="input-wrap has-sfx">
+            <span class="input-sfx">%</span>
+            <input type="number" id="srsRet" value="5" min="0" max="20" step="0.5">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CPF -->
+  <div class="section">
+    <div class="sec-head" onclick="toggleSec('cpf')">
+      <div class="sec-head-left">
+        <span class="sec-icon">🏦</span>
+        <span class="sec-title">CPF Balances</span>
+      </div>
+      <span class="sec-chev open" id="chev-cpf">▾</span>
+    </div>
+    <div class="sec-body" id="sb-cpf">
+      <div class="g3">
+        <div class="field">
+          <label class="field-label" for="cpfOA">
+            OA
+            <span class="tip" data-tip="Ordinary Account earns 2.5% p.a. Used for housing, CPF investments, insurance.">?</span>
+          </label>
+          <div class="input-wrap has-pfx">
+            <span class="input-pfx">$</span>
+            <input type="number" id="cpfOA" value="50000" min="0">
+          </div>
+          <div class="field-hint">2.5% p.a.</div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="cpfSA">
+            SA
+            <span class="tip" data-tip="Special Account earns 4% p.a. Locked for retirement. Transfers to RA at 55.">?</span>
+          </label>
+          <div class="input-wrap has-pfx">
+            <span class="input-pfx">$</span>
+            <input type="number" id="cpfSA" value="30000" min="0">
+          </div>
+          <div class="field-hint">4.0% p.a.</div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="cpfMA">
+            MA
+            <span class="tip" data-tip="MediShield Account earns 4% p.a. Capped at Basic Healthcare Sum (~S$71k in 2024).">?</span>
+          </label>
+          <div class="input-wrap has-pfx">
+            <span class="input-pfx">$</span>
+            <input type="number" id="cpfMA" value="20000" min="0">
+          </div>
+          <div class="field-hint">4.0% p.a.</div>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label" for="saTopup">
+          Annual SA/RA Cash Top-up (S$)
+          <span class="tip" data-tip="Tax relief up to S$8,000/yr for self. SA earns 4% guaranteed — one of Singapore's best risk-free returns.">?</span>
+        </label>
+        <div class="input-wrap has-pfx">
+          <span class="input-pfx">$</span>
+          <input type="number" id="saTopup" value="0" min="0" max="8000">
+        </div>
+        <div class="field-hint">Max S$8,000/yr for tax relief (2026)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CPF STRATEGY -->
+  <div class="section">
+    <div class="sec-head" onclick="toggleSec('cpfstrat')">
+      <div class="sec-head-left">
+        <span class="sec-icon">🎯</span>
+        <span class="sec-title">CPF LIFE Strategy</span>
+      </div>
+      <span class="sec-chev" id="chev-cpfstrat">▾</span>
+    </div>
+    <div class="sec-body hidden" id="sb-cpfstrat">
+      <div class="field">
+        <label class="field-label" for="cpfScheme">
+          Retirement Sum Target
+          <span class="tip" data-tip="BRS: ~S$102k, pledge HDB. FRS: ~S$205k standard. ERS: ~S$410k enhanced, max payout.">?</span>
+        </label>
+        <select id="cpfScheme">
+          <option value="BRS">BRS — ~S$102k RA (pledge property)</option>
+          <option value="FRS" selected>FRS — ~S$205k RA (standard)</option>
+          <option value="ERS">ERS — ~S$410k RA (enhanced)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field-label" for="cpfLifePlan">CPF LIFE Plan</label>
+        <select id="cpfLifePlan">
+          <option value="STANDARD" selected>Standard (level payout, lower bequest)</option>
+          <option value="BASIC">Basic (lower payout, higher bequest)</option>
+          <option value="ESCALATING">Escalating (+2%/yr from 65)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field-label" for="cpfLifeAge">
+          Payout Start Age
+          <span class="tip" data-tip="Each year deferred from 65→70 boosts your payout by ~7%. If you have other income until 70, deferring is often optimal.">?</span>
+        </label>
+        <input type="number" id="cpfLifeAge" value="65" min="65" max="70">
+        <div class="field-hint">+7% payout per year deferred (65→70)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PORTFOLIO -->
+  <div class="section">
+    <div class="sec-head" onclick="toggleSec('port')">
+      <div class="sec-head-left">
+        <span class="sec-icon">📈</span>
+        <span class="sec-title">Portfolio</span>
+      </div>
+      <span class="sec-chev open" id="chev-port">▾</span>
+    </div>
+    <div class="sec-body" id="sb-port">
+      <div class="field-hint" style="color:var(--t2);font-size:11px;margin-bottom:2px">
+        Add each asset class with its current value, expected return, and volatility. Correlation is handled automatically.
+      </div>
+      <div id="asset-rows"></div>
+      <button class="add-btn" onclick="addAsset()" type="button">+ Add asset class</button>
+      <div class="field" style="margin-top:.25rem">
+        <label class="field-label" for="monthlyInv">
+          Extra Monthly Investment (S$)
+          <span class="tip" data-tip="Additional amount invested per month pre-retirement, after all expenses and CPF.">?</span>
+        </label>
+        <div class="input-wrap has-pfx">
+          <span class="input-pfx">$</span>
+          <input type="number" id="monthlyInv" value="500" min="0">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CASH & DEBT -->
+  <div class="section">
+    <div class="sec-head" onclick="toggleSec('cash')">
+      <div class="sec-head-left">
+        <span class="sec-icon">💵</span>
+        <span class="sec-title">Cash &amp; Debt</span>
+      </div>
+      <span class="sec-chev" id="chev-cash">▾</span>
+    </div>
+    <div class="sec-body hidden" id="sb-cash">
+      <div class="g2">
+        <div class="field">
+          <label class="field-label" for="cash">Cash Savings (S$)</label>
+          <div class="input-wrap has-pfx">
+            <span class="input-pfx">$</span>
+            <input type="number" id="cash" value="30000" min="0">
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="cashRet">Cash Return %</label>
+          <div class="input-wrap has-sfx">
+            <span class="input-sfx">%</span>
+            <input type="number" id="cashRet" value="2.5" min="0" max="10" step="0.25">
+          </div>
+          <div class="field-hint">T-bills ~3.5%, HYSA ~2–3%</div>
+        </div>
+      </div>
+      <div class="g2">
+        <div class="field">
+          <label class="field-label" for="debt">Debt Outstanding (S$)</label>
+          <div class="input-wrap has-pfx">
+            <span class="input-pfx">$</span>
+            <input type="number" id="debt" value="0" min="0">
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="debtRate">Interest Rate %</label>
+          <div class="input-wrap has-sfx">
+            <span class="input-sfx">%</span>
+            <input type="number" id="debtRate" value="3.5" min="0" max="30" step="0.25">
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label" for="debtPay">Monthly Repayment (S$)</label>
+        <div class="input-wrap has-pfx">
+          <span class="input-pfx">$</span>
+          <input type="number" id="debtPay" value="0" min="0">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPENSES -->
+  <div class="section">
+    <div class="sec-head" onclick="toggleSec('exp')">
+      <div class="sec-head-left">
+        <span class="sec-icon">🧾</span>
+        <span class="sec-title">Expenses</span>
+      </div>
+      <span class="sec-chev open" id="chev-exp">▾</span>
+    </div>
+    <div class="sec-body" id="sb-exp">
+      <div class="g2">
+        <div class="field">
+          <label class="field-label" for="expNow">
+            Current (S$/mo)
+            <span class="tip" data-tip="Your current monthly spending, excluding CPF contributions.">?</span>
+          </label>
+          <div class="input-wrap has-pfx">
+            <span class="input-pfx">$</span>
+            <input type="number" id="expNow" value="3000" min="0">
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="expRetire">
+            In Retirement (S$/mo)
+            <span class="tip" data-tip="In today's dollars. Rule of thumb: 70–80% of current spending. Enter realistic amount.">?</span>
+          </label>
+          <div class="input-wrap has-pfx">
+            <span class="input-pfx">$</span>
+            <input type="number" id="expRetire" value="2500" min="0">
+          </div>
+          <div class="field-hint">Today's dollars</div>
+        </div>
+      </div>
+      <div class="g2">
+        <div class="field">
+          <label class="field-label" for="inflation">Inflation %/yr</label>
+          <div class="input-wrap has-sfx">
+            <span class="input-sfx">%</span>
+            <input type="number" id="inflation" value="3" min="0" max="15" step="0.25">
+          </div>
+          <div class="field-hint">SG avg ~2.5–3.5%</div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="healthCost">
+            Healthcare 65+ /mo
+            <span class="tip" data-tip="Additional healthcare costs from age 65. Scales with age (70%: +20%, 80%: +50%, 85%: +100%). MediShield covers hospitalisation.">?</span>
+          </label>
+          <div class="input-wrap has-pfx">
+            <span class="input-pfx">$</span>
+            <input type="number" id="healthCost" value="400" min="0">
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label" for="healthShocks">
+          Random Health Shocks
+          <span class="tip" data-tip="2% annual probability of a S$15,000–30,000 health event (hospitalization, surgery, etc.) in retirement.">?</span>
+        </label>
+        <select id="healthShocks">
+          <option value="1" selected>Enabled (2% chance/yr, S$15k–30k)</option>
+          <option value="0">Disabled</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIMULATION -->
+  <div class="section">
+    <div class="sec-head" onclick="toggleSec('sim')">
+      <div class="sec-head-left">
+        <span class="sec-icon">⚙️</span>
+        <span class="sec-title">Simulation Settings</span>
+      </div>
+      <span class="sec-chev" id="chev-sim">▾</span>
+    </div>
+    <div class="sec-body hidden" id="sb-sim">
+      <div class="field">
+        <label class="field-label" for="mcRuns">Number of Simulations</label>
+        <select id="mcRuns">
+          <option value="500">500 — fast preview</option>
+          <option value="1000" selected>1,000 — recommended</option>
+          <option value="2000">2,000 — accurate</option>
+          <option value="5000">5,000 — high precision (slow)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field-label" for="distModel">
+          Return Distribution Model
+          <span class="tip" data-tip="Normal: classic GBM. Fat-tail: Student-t (heavier crashes). Historical: real S&P 500 resampling. Regime: Bull/Bear switching. Stress: worst-case early drawdown.">?</span>
+        </label>
+        <select id="distModel">
+          <option value="normal">Standard GBM (Normal distribution)</option>
+          <option value="fat_tail" selected>Fat-Tail (Student-t, df=7)</option>
+          <option value="historical">Historical Bootstrap (S&amp;P 500)</option>
+          <option value="regime">Regime Switching (Bull/Bear Markov)</option>
+          <option value="stress">Sequence-of-Returns Stress Test</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field-label" for="withdrawStrat">
+          Withdrawal Strategy
+          <span class="tip" data-tip="Proportional: sell all assets equally. Conservative-first: drain bonds/cash before equities. Dynamic (Guyton-Klinger): cut 10% in bad years, allow 10% increase in good years.">?</span>
+        </label>
+        <select id="withdrawStrat">
+          <option value="proportional">Proportional (sell all assets equally)</option>
+          <option value="conservative_first">Conservative-first (bonds → cash → equities)</option>
+          <option value="dynamic">Dynamic / Guyton-Klinger guardrails</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field-label" for="corrMode">Asset Correlation</label>
+        <select id="corrMode">
+          <option value="none">Independent (no correlation)</option>
+          <option value="typical" selected>Typical (equity/bond negative corr.)</option>
+          <option value="crisis">Crisis mode (all assets fall together)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- RUN BUTTON -->
+  <div class="run-area">
+    <button class="btn-run" id="runBtn" onclick="runSimulation()" type="button">
+      <span class="btn-label">▶ Run Monte Carlo Simulation</span>
+      <div class="spinner"></div>
+    </button>
+    <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+    <p class="run-note">All calculations run in your browser.<br>No data is ever sent to any server.</p>
+  </div>
+
+</aside>
+
+<!-- ══════════════════════════════════════════════════════════
+     MAIN CONTENT
+══════════════════════════════════════════════════════════ -->
+<main class="main" id="mainContent">
+
+  <!-- Placeholder -->
+  <div class="placeholder" id="placeholder">
+    <div class="ph-icon">📊</div>
+    <div class="ph-title">Enter your details and run the simulation</div>
+    <p class="ph-sub">
+      Up to 5,000 simulated lifetimes computed in your browser using a professional Monte Carlo engine — regime switching, fat-tails, CPF LIFE, health shocks.
+    </p>
+  </div>
+
+  <!-- Results -->
+  <div class="results" id="results">
+
+    <!-- Verdict -->
+    <div class="verdict" id="verdict">
+      <div class="v-emoji" id="v-emoji"></div>
+      <div class="v-body">
+        <h2 id="v-head"></h2>
+        <p id="v-sub"></p>
+        <div class="v-chips" id="v-chips"></div>
+      </div>
+    </div>
+
+    <!-- Key metrics -->
+    <div class="metrics" id="metrics"></div>
+
+    <!-- Tabs -->
+    <div class="tabs" id="tabBar">
+      <button class="tab-btn on"  onclick="showTab('fan',this)">📉 Fan Chart</button>
+      <button class="tab-btn"     onclick="showTab('cpf',this)">🏦 CPF Growth</button>
+      <button class="tab-btn"     onclick="showTab('income',this)">💰 Income/Expense</button>
+      <button class="tab-btn"     onclick="showTab('drawdown',this)">📉 Drawdown</button>
+      <button class="tab-btn"     onclick="showTab('dist',this)">📊 Distribution</button>
+      <button class="tab-btn"     onclick="showTab('health',this)">🩺 Health Check</button>
+      <button class="tab-btn"     onclick="showTab('pct',this)">📋 Percentiles</button>
+      <button class="tab-btn"     onclick="showTab('assets',this)">🥧 Assets</button>
+      <button class="tab-btn"     onclick="showTab('recs',this)">💡 Advice</button>
+    </div>
+
+    <!-- Fan Chart -->
+    <div class="tab-pane on" id="tab-fan">
+      <div class="chart-card">
+        <h3>Liquid wealth — Monte Carlo fan chart</h3>
+        <p class="chart-desc">Shaded bands show the distribution of simulated outcomes. Thicker bands = higher probability. Red dashed line = retirement age.</p>
+        <div class="legend" id="fan-legend">
+          <div class="leg"><div class="leg-swatch band" style="background:rgba(0,212,255,.15)"></div>P10–P90</div>
+          <div class="leg"><div class="leg-swatch band" style="background:rgba(0,212,255,.30)"></div>P25–P75</div>
+          <div class="leg"><div class="leg-swatch" style="background:var(--a1);height:2px;width:20px"></div>Median P50</div>
+          <div class="leg"><div class="leg-swatch" style="background:var(--red);height:2px;width:20px;border-top:2px dashed var(--red);height:0"></div>Retirement age</div>
+        </div>
+        <div class="chart-wrap" style="height:320px">
+          <canvas id="fanChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- CPF -->
+    <div class="tab-pane" id="tab-cpf">
+      <div class="chart-card">
+        <h3>CPF account growth — median scenario</h3>
+        <p class="chart-desc">OA at 2.5% p.a., SA/RA at 4% p.a. At 55, SA transfers to RA up to your retirement sum target. CPF LIFE annuity begins at your chosen payout age.</p>
+        <div class="chart-wrap" style="height:280px">
+          <canvas id="cpfChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Income -->
+    <div class="tab-pane" id="tab-income">
+      <div class="chart-card">
+        <h3>Annual income vs expenses — median scenario</h3>
+        <p class="chart-desc">Purple area = take-home salary. Green = CPF LIFE payout. Dashed red = total expenses (inflation-adjusted). Gap is funded by portfolio drawdown.</p>
+        <div class="chart-wrap" style="height:280px">
+          <canvas id="incomeChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drawdown -->
+    <div class="tab-pane" id="tab-drawdown">
+      <div class="chart-card">
+        <h3>Maximum drawdown distribution</h3>
+        <p class="chart-desc">How much did liquid wealth fall from peak before recovery? Higher drawdowns in retirement are dangerous. P90 drawdown = worst 10% of scenarios.</p>
+        <div class="chart-wrap" style="height:260px">
+          <canvas id="drawdownChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Distribution -->
+    <div class="tab-pane" id="tab-dist">
+      <div class="chart-card">
+        <h3>Final wealth distribution at end of plan</h3>
+        <p class="chart-desc">Histogram of terminal portfolio values across all simulations. Left tail (near zero or negative) represents failure scenarios.</p>
+        <div class="chart-wrap" style="height:260px">
+          <canvas id="distChart"></canvas>
+        </div>
+        <div id="dist-stats" style="margin-top:1rem"></div>
+      </div>
+    </div>
+
+    <!-- Health check -->
+    <div class="tab-pane" id="tab-health">
+      <div class="chart-card">
+        <h3>Simulation health check</h3>
+        <p class="chart-desc">Beyond the headline success rate — margin of safety, worst-case analysis, and behavioural risks.</p>
+        <div class="health-grid" id="health-grid"></div>
+        <div id="health-alert" style="display:flex;flex-direction:column;gap:.5rem"></div>
+      </div>
+    </div>
+
+    <!-- Percentiles -->
+    <div class="tab-pane" id="tab-pct">
+      <div class="chart-card">
+        <h3>Liquid wealth by percentile and age</h3>
+        <p class="chart-desc">P10 = worst 10% of futures. P90 = best 10%. The retirement row (→) is highlighted.</p>
+        <div style="overflow-x:auto">
+          <table class="ptable" id="pct-table"></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Assets -->
+    <div class="tab-pane" id="tab-assets">
+      <div class="grid2">
+        <div class="chart-card">
+          <h3>Asset mix at retirement — median</h3>
+          <p class="chart-desc">Where your net worth sits at retirement age across asset classes.</p>
+          <div class="chart-wrap" style="height:220px">
+            <canvas id="assetChart"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3>Breakdown</h3>
+          <table class="btable" id="asset-table"></table>
+          <div id="swr-info" style="margin-top:1rem"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recs -->
+    <div class="tab-pane" id="tab-recs">
+      <div class="chart-card">
+        <h3>Personalised recommendations</h3>
+        <p class="chart-desc">Generated from your inputs and simulation results. Not financial advice — consult a MAS-licensed adviser for personalised guidance.</p>
+        <ul class="rec-list" id="rec-list"></ul>
+      </div>
+    </div>
+
+  </div><!-- /results -->
+</main>
+
+</div><!-- /layout -->
+
+<div class="footer">
+  SG Retirement Simulator · 2026 CPF rates · S$8,000 OW ceiling ·
+  <strong>Not financial advice</strong> — consult a
+  <a href="https://eservices.mas.gov.sg/rr" target="_blank" rel="noopener">MAS-licensed adviser</a> ·
+  <a href="https://www.cpf.gov.sg" target="_blank" rel="noopener">cpf.gov.sg</a> ·
+  All calculations run locally in your browser.
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+/* ══════════════════════════════════════════════════════════════
+   CONSTANTS — 2026 CPF RATES
+══════════════════════════════════════════════════════════════ */
+const CPF_RATES = [
+  {mn:0,  mx:35, emp:0.20, empr:0.17, oa:0.6217, sa:0.1621, ma:0.2162},
+  {mn:35, mx:45, emp:0.20, empr:0.17, oa:0.5136, sa:0.1891, ma:0.2973},
+  {mn:45, mx:50, emp:0.20, empr:0.17, oa:0.4055, sa:0.2162, ma:0.3783},
+  {mn:50, mx:55, emp:0.20, empr:0.17, oa:0.3244, sa:0.2702, ma:0.4054},
+  {mn:55, mx:60, emp:0.17, empr:0.155,oa:0.3750, sa:0.3125, ma:0.3125},
+  {mn:60, mx:65, emp:0.125,empr:0.12, oa:0.1556, sa:0.2889, ma:0.5555},
+  {mn:65, mx:70, emp:0.075,empr:0.09, oa:0.0606, sa:0.3636, ma:0.5758},
+  {mn:70, mx:200,emp:0.05, empr:0.075,oa:0.08,   sa:0.32,   ma:0.60  },
+];
+const OW_CEIL = 8000, AW_CEIL = 102000;
+const RA_TARGETS = {BRS:102000, FRS:205000, ERS:410000};
+// Monthly payout per S$10,000 RA at age 65 (FRS plan, Standard)
+const PAYOUT_TABLE = {STANDARD:{BRS:50,FRS:56,ERS:62}, BASIC:{BRS:44,FRS:50,ERS:56}, ESCALATING:{BRS:42,FRS:47,ERS:53}};
+
+/* ══════════════════════════════════════════════════════════════
+   HISTORICAL RETURNS (S&P 500, 1928–2023, annual total return)
+══════════════════════════════════════════════════════════════ */
+const SP500 = [
+  0.4381,-0.0831,-0.2512,-0.4384,-0.0864,0.4998,-0.0119,0.4674,0.3194,-0.3534,
+  0.2928,-0.0110,-0.1067,-0.1277,0.1917,0.2506,0.1903,0.3582,-0.0843,0.0520,
+  0.0570,0.1830,0.3081,0.2368,0.1815,-0.0121,0.5256,0.3260,0.0744,-0.1046,
+  0.4372,0.1206,0.0034,0.2664,-0.0881,0.2261,0.1642,0.1240,-0.0997,0.2380,
+  0.1095,-0.0824,0.0356,0.1422,0.1876,-0.1431,-0.2590,0.3700,0.2383,-0.0698,
+  0.0651,0.1852,0.3174,-0.0470,0.2042,0.2234,0.0615,0.3124,0.1849,0.0581,
+  0.1654,0.3148,-0.0306,0.3023,0.0749,0.0994,0.0133,0.3720,0.2268,0.3310,
+  0.2836,0.2089,-0.0903,-0.1185,-0.2197,0.2836,0.1074,0.0483,0.1561,0.0548,
+  -0.3655,0.2594,0.1482,0.0210,0.1589,0.3215,0.1352,0.0138,0.1196,0.2161,
+  -0.0423,0.3121,0.1802,-0.0443,0.2629,0.2661
+];
+const SP_MEAN = SP500.reduce((a,b)=>a+b,0)/SP500.length;
+const SP_STD  = Math.sqrt(SP500.map(x=>(x-SP_MEAN)**2).reduce((a,b)=>a+b,0)/(SP500.length-1));
+
+/* ══════════════════════════════════════════════════════════════
+   RNG UTILITIES
+══════════════════════════════════════════════════════════════ */
+function randn() {
+  // Box-Muller transform
+  let u, v;
+  do { u = Math.random(); } while (u === 0);
+  do { v = Math.random(); } while (v === 0);
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function randn_t(df = 7) {
+  // Student-t via ratio of normal to chi distribution
+  const z = randn();
+  let chi2 = 0;
+  for (let i = 0; i < df; i++) { const x = randn(); chi2 += x * x; }
+  // Standardize to have unit variance
+  return (z / Math.sqrt(chi2 / df)) * Math.sqrt((df - 2) / df);
+}
+
+function randn_hist() {
+  // Resample from historical S&P 500 returns, z-scored then re-scaled
+  const r = SP500[Math.floor(Math.random() * SP500.length)];
+  return (r - SP_MEAN) / SP_STD;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CORRELATION ENGINE
+   Cholesky decomposition to generate correlated normals.
+   Correlation matrix rows: [equity, bond, cash, alts]
+══════════════════════════════════════════════════════════════ */
+const CORR_MATRICES = {
+  none:    [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]],
+  typical: [[1.00,-0.20, 0.05, 0.60],[-0.20,1.00, 0.15,-0.10],[0.05,0.15,1.00, 0.05],[0.60,-0.10,0.05,1.00]],
+  crisis:  [[1.00, 0.60, 0.30, 0.80],[0.60,1.00, 0.40, 0.50],[0.30,0.40,1.00, 0.30],[0.80,0.50,0.30,1.00]],
+};
+
+function cholesky(C) {
+  const n = C.length;
+  const L = Array.from({length:n}, () => new Float64Array(n));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j <= i; j++) {
+      let s = C[i][j];
+      for (let k = 0; k < j; k++) s -= L[i][k] * L[j][k];
+      L[i][j] = (i === j) ? Math.sqrt(Math.max(0, s)) : (L[j][j] > 1e-10 ? s / L[j][j] : 0);
+    }
+  }
+  return L;
+}
+
+function correlatedNormals(L, n, rngFn) {
+  const z = Array.from({length:n}, rngFn);
+  const result = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j <= i; j++) result[i] += L[i][j] * z[j];
+  }
+  return result;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   REGIME SWITCHING PARAMETERS (Markov)
+══════════════════════════════════════════════════════════════ */
+const REGIME = {
+  BULL: { mean: 0.14, vol: 0.12, transitionToBear: 0.15 },
+  BEAR: { mean: -0.12, vol: 0.25, transitionToBull: 0.35 },
+};
+
+/* ══════════════════════════════════════════════════════════════
+   HELPERS
+══════════════════════════════════════════════════════════════ */
+function getCPFRate(age) {
+  return CPF_RATES.find(r => age > r.mn && age <= r.mx) || CPF_RATES[CPF_RATES.length-1];
+}
+function fmtS(n) {
+  if (isNaN(n) || !isFinite(n)) return 'S$—';
+  return 'S$' + Math.round(n).toLocaleString('en-SG');
+}
+function fmtK(n) {
+  if (isNaN(n) || !isFinite(n)) return '—';
+  const s = n < 0 ? '-' : '';
+  const a = Math.abs(n);
+  if (a >= 1e6) return s + 'S$' + (a / 1e6).toFixed(2) + 'M';
+  if (a >= 1e3) return s + 'S$' + (a / 1e3).toFixed(0) + 'K';
+  return fmtS(n);
+}
+function gn(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
+function gs(id) { return document.getElementById(id)?.value || ''; }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+/* ══════════════════════════════════════════════════════════════
+   ASSET STATE
+══════════════════════════════════════════════════════════════ */
+let assets = [
+  {name:'Global Equities (e.g. VT, VWRA)', value:50000, ret:7.0, vol:15.0, type:'equity'},
+  {name:'Singapore REITs',                  value:20000, ret:5.0, vol:10.0, type:'alts'},
+  {name:'Bonds / SGS / SSB',                value:10000, ret:3.0, vol:5.0,  type:'bond'},
+];
+
+// Classify asset type from name (rough heuristic)
+function inferType(name) {
+  const l = name.toLowerCase();
+  if (l.includes('bond') || l.includes('ssb') || l.includes('sgs') || l.includes('fixed')) return 'bond';
+  if (l.includes('cash') || l.includes('tbill') || l.includes('money')) return 'cash';
+  if (l.includes('reit') || l.includes('property') || l.includes('gold') || l.includes('commodity')) return 'alts';
+  return 'equity';
+}
+
+function renderAssets() {
+  const c = document.getElementById('asset-rows');
+  c.innerHTML = '';
+  assets.forEach((a, i) => {
+    const div = document.createElement('div');
+    div.className = 'asset-row';
+    div.innerHTML = `
+      <div class="asset-row-head">
+        <input class="asset-name-inp" value="${a.name}"
+          oninput="assets[${i}].name=this.value;assets[${i}].type=inferType(this.value)"
+          placeholder="Asset name">
+        <button class="asset-del" onclick="delAsset(${i})" type="button" title="Remove">×</button>
+      </div>
+      <div class="g3">
+        <div class="field">
+          <label class="field-label">Value S$</label>
+          <input type="number" value="${a.value}" min="0"
+            oninput="assets[${i}].value=Math.max(0,+this.value||0)">
+        </div>
+        <div class="field">
+          <label class="field-label">Return %/yr</label>
+          <input type="number" value="${a.ret}" step="0.5" min="-20" max="50"
+            oninput="assets[${i}].ret=+this.value||0">
+        </div>
+        <div class="field">
+          <label class="field-label">
+            Volatility %
+            <span class="tip" data-tip="Standard deviation of annual returns. Global equities ~15%. Bonds ~5%. Cash ~1%.">?</span>
+          </label>
+          <input type="number" value="${a.vol}" step="0.5" min="0" max="80"
+            oninput="assets[${i}].vol=Math.max(0,+this.value||0)">
+        </div>
+      </div>`;
+    c.appendChild(div);
+  });
+}
+
+function addAsset() {
+  assets.push({name:'New Asset', value:10000, ret:5.0, vol:10.0, type:'equity'});
+  renderAssets();
+}
+function delAsset(i) {
+  if (assets.length <= 1) return;
+  assets.splice(i, 1);
+  renderAssets();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   VALIDATION
+══════════════════════════════════════════════════════════════ */
+function validate() {
+  const age = gn('age'), retire = gn('retireAge'), life = gn('lifeExp');
+  let ok = true;
+  const showErr = (id, msg, show) => {
+    const el = document.getElementById('err-' + id);
+    if (el) { el.style.display = show ? 'block' : 'none'; el.textContent = msg; }
+    const inp = document.getElementById(id);
+    if (inp) inp.classList.toggle('error', show);
+    if (show) ok = false;
+  };
+  showErr('age', 'Must be 18–69', age < 18 || age > 69);
+  showErr('retireAge', 'Must be after current age & ≤80', retire <= age || retire > 80);
+  return ok;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   UI HELPERS
+══════════════════════════════════════════════════════════════ */
+function toggleSec(id) {
+  const body = document.getElementById('sb-' + id);
+  const chev = document.getElementById('chev-' + id);
+  const hidden = body.classList.toggle('hidden');
+  if (chev) chev.classList.toggle('open', !hidden);
+}
+
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('on'));
+  document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('on'));
+  document.getElementById('tab-' + name).classList.add('on');
+  if (btn) btn.classList.add('on');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SINGLE SIMULATION RUN
+══════════════════════════════════════════════════════════════ */
+function simulateRun(inp, cholL, rngFn) {
+  let oa = inp.cpfOA, sa = inp.cpfSA, ma = inp.cpfMA, ra = 0;
+  let cash = inp.cash, debt = inp.debt, srs = 0;
+  let port = inp.assets.map(a => ({...a}));
+  let curSalary = inp.salary;
+  let isRetired = false;
+  let cpfLifeAnnual = 0, raSet = false;
+  let bankruptAge = null;
+  let peakLiquid = 0, maxDrawdown = 0;
+
+  // Regime state for regime-switching model
+  let regime = Math.random() < 0.75 ? 'BULL' : 'BEAR';
+
+  const years = [];
+  const N = inp.lifeExp - inp.age + 1;
+
+  // Stress-test front-load: worst early returns
+  const stressReturns = inp.distModel === 'stress'
+    ? generateStressSequence(inp.assets.length)
+    : null;
+  let stressIdx = 0;
+
+  for (let yr = 0; yr < N; yr++) {
+    const age = inp.age + yr;
+    if (age === inp.retireAge) isRetired = true;
+
+    /* ── 1. Salary & CPF contributions ── */
+    let cpfOAin = 0, cpfSAin = 0, cpfMAin = 0, netSalary = 0;
+    if (!isRetired) {
+      const gross = curSalary;
+      const bonus = curSalary * inp.bonusMths;
+      const annual = gross * 12 + bonus;
+      const owSub = Math.min(gross, OW_CEIL) * 12;
+      const awSub = Math.max(0, Math.min(bonus, AW_CEIL - owSub));
+      const cpfSub = owSub + awSub;
+      const r = getCPFRate(age);
+      const tot = cpfSub * (r.emp + r.empr);
+      cpfOAin = tot * r.oa;
+      cpfSAin = tot * r.sa;
+      cpfMAin = tot * r.ma;
+      netSalary = annual - cpfSub * r.emp;
+      curSalary *= (1 + inp.salaryGrowth / 100);
+
+      // SRS top-up
+      if (inp.srsMonthly > 0) {
+        srs += Math.min(inp.srsMonthly * 12, 15300);
+      }
+    }
+
+    /* ── 2. SA top-up ── */
+    if (!isRetired && inp.saTopup > 0 && age < 55) {
+      sa += Math.min(inp.saTopup, 8000);
+    }
+
+    /* ── 3. CPF interest ── */
+    oa = oa * 1.025 + cpfOAin;
+    sa = sa * 1.040 + cpfSAin;
+    ma = ma * 1.040 + cpfMAin;
+    ra = ra * 1.040;
+    srs = srs * (1 + inp.srsRet / 100);
+
+    /* ── 4. Age 55: SA → RA transfer ── */
+    if (age === 55 && !raSet) {
+      const tgt = RA_TARGETS[inp.cpfScheme] || 205000;
+      let fill = tgt;
+      const fromSA = Math.min(sa, fill); sa -= fromSA; ra += fromSA; fill -= fromSA;
+      if (fill > 0) { const fromOA = Math.min(oa, fill); oa -= fromOA; ra += fromOA; }
+      raSet = true;
+    }
+
+    /* ── 5. CPF LIFE at 65 ── */
+    if (age === 65) {
+      const factor = PAYOUT_TABLE[inp.cpfLifePlan]?.[inp.cpfScheme] || 56;
+      const defer = Math.max(0, inp.cpfLifeAge - 65);
+      const raEff = ra * Math.pow(1.07, defer);
+      cpfLifeAnnual = (raEff / 10000) * factor * 12;
+      ra = 0; // RA handed to CPF Board for annuity
+    }
+    // Escalating plan grows 2%/yr
+    if (age > 65 && inp.cpfLifePlan === 'ESCALATING') cpfLifeAnnual *= 1.02;
+
+    const cpfIncome = age >= inp.cpfLifeAge ? cpfLifeAnnual : 0;
+
+    /* ── 6. Portfolio returns (correlated GBM) ── */
+    let portTotal = port.reduce((s, a) => s + a.value, 0);
+
+    if (portTotal > 0) {
+      const n = Math.min(port.length, 4); // max 4 in correlation matrix
+      let epsilons;
+
+      if (inp.distModel === 'stress' && stressReturns) {
+        // Pre-computed stress sequence
+        epsilons = stressReturns[stressIdx % stressReturns.length];
+        stressIdx++;
+      } else if (inp.distModel === 'regime') {
+        // Regime switching — same epsilon for all assets, scaled by regime
+        const reg = REGIME[regime];
+        const eps = rngFn();
+        epsilons = port.map(() => eps);
+        // Transition
+        const transProb = regime === 'BULL' ? reg.transitionToBear : reg.transitionToBull;
+        if (Math.random() < transProb) regime = regime === 'BULL' ? 'BEAR' : 'BULL';
+      } else {
+        // Correlated normals via Cholesky
+        const correlated = correlatedNormals(cholL, n, rngFn);
+        epsilons = port.map((_, i) => correlated[Math.min(i, n - 1)]);
+      }
+
+      port.forEach((a, i) => {
+        if (a.value <= 0) { a.value = 0; return; }
+        let mu, sigma;
+        if (inp.distModel === 'regime') {
+          const reg = REGIME[regime];
+          // Blend asset's own return with regime
+          mu = a.ret / 100 * 0.5 + reg.mean * 0.5;
+          sigma = Math.max(a.vol / 100, reg.vol);
+        } else {
+          mu = a.ret / 100;
+          sigma = a.vol / 100;
+        }
+        if (sigma < 0.0001) {
+          a.value *= (1 + mu); // deterministic
+        } else {
+          const drift = mu - 0.5 * sigma * sigma;
+          const shock = sigma * (epsilons[i] || 0);
+          a.value = Math.max(0, a.value * Math.exp(drift + shock));
+        }
+      });
+    }
+
+    portTotal = port.reduce((s, a) => s + a.value, 0);
+
+    /* ── 7. Cash interest & debt ── */
+    cash = Math.max(0, cash) * (1 + inp.cashRet / 100);
+    let debtPay = 0;
+    if (debt > 0) {
+      debt *= (1 + inp.debtRate / 100);
+      debtPay = Math.min(debt, inp.debtMonthly * 12);
+      debt = Math.max(0, debt - debtPay);
+    }
+
+    /* ── 8. Health shocks ── */
+    if (inp.healthShocks && isRetired && Math.random() < 0.02) {
+      const shock = 15000 + Math.random() * 15000; // 15k–30k
+      if (cash >= shock) {
+        cash -= shock;
+      } else {
+        const rem = shock - cash;
+        cash = 0;
+        portTotal = port.reduce((s, a) => s + a.value, 0);
+        if (portTotal >= rem) {
+          const ratio = rem / portTotal;
+          port.forEach(a => { a.value -= a.value * ratio; });
+        } else {
+          port.forEach(a => { a.value = 0; });
+          if (!bankruptAge) bankruptAge = age;
+        }
+      }
+    }
+
+    /* ── 9. Expenses ── */
+    const infl = Math.pow(1 + inp.inflation / 100, yr);
+    const baseExp = (isRetired ? inp.expRetire : inp.expNow) * 12 * infl;
+    let hcExtra = 0;
+    if (age >= 65) {
+      let hm = 1.0;
+      if (age >= 70) hm = 1.2;
+      if (age >= 80) hm = 1.5;
+      if (age >= 85) hm = 2.0;
+      hcExtra = inp.healthCost * 12 * hm * infl;
+    }
+    const totalExp = baseExp + hcExtra + debtPay;
+
+    /* ── 10. Net annual cash flow ── */
+    let netFlow = netSalary + cpfIncome - totalExp;
+
+    /* ── 11. Pre-retirement investing ── */
+    if (!isRetired && inp.monthlyInv > 0 && netFlow > 0) {
+      const inv = Math.min(inp.monthlyInv * 12, netFlow);
+      portTotal = port.reduce((s, a) => s + a.value, 0);
+      if (portTotal > 0) {
+        port.forEach(a => { a.value += inv * (a.value / portTotal); });
+      } else if (port.length > 0) {
+        port[0].value += inv;
+      }
+      netFlow -= inv;
+    }
+
+    /* ── 12. Handle surplus / deficit ── */
+    portTotal = port.reduce((s, a) => s + a.value, 0);
+    const liquid = cash + portTotal;
+
+    if (netFlow >= 0) {
+      cash += netFlow;
+    } else {
+      const deficit = Math.abs(netFlow);
+      // Dynamic guardrail: cut spending 10% if portfolio < prior year by 10%
+      let actualDeficit = deficit;
+      if (inp.withdrawStrat === 'dynamic' && years.length > 0) {
+        const lastLiquid = years[years.length - 1].liquid;
+        if (lastLiquid > 0 && liquid < lastLiquid * 0.9) {
+          actualDeficit = deficit * 0.9; // guardrail cut
+        }
+      }
+
+      if (cash >= actualDeficit) {
+        cash -= actualDeficit;
+      } else {
+        let rem = actualDeficit - cash;
+        cash = 0;
+
+        portTotal = port.reduce((s, a) => s + a.value, 0);
+        if (portTotal > 0) {
+          if (inp.withdrawStrat === 'conservative_first') {
+            // Drain by volatility ascending (bonds first)
+            const sorted = [...port].sort((a, b) => a.vol - b.vol);
+            for (const sa2 of sorted) {
+              if (rem <= 0) break;
+              const orig = port.find(x => x.name === sa2.name);
+              if (!orig) continue;
+              const take = Math.min(orig.value, rem);
+              orig.value -= take;
+              rem -= take;
+            }
+          } else {
+            // Proportional
+            const ratio = Math.min(1, rem / portTotal);
+            port.forEach(a => { a.value -= a.value * ratio; rem -= a.value * ratio; });
+          }
+          if (rem > 0.01 && !bankruptAge) bankruptAge = age;
+        } else {
+          if (!bankruptAge) bankruptAge = age;
+        }
+      }
+    }
+
+    portTotal = port.reduce((s, a) => s + a.value, 0);
+    const liquidNow = cash + portTotal;
+
+    // Track drawdown
+    if (liquidNow > peakLiquid) peakLiquid = liquidNow;
+    if (peakLiquid > 0) {
+      const dd = (peakLiquid - liquidNow) / peakLiquid;
+      if (dd > maxDrawdown) maxDrawdown = dd;
+    }
+
+    years.push({
+      age, port: portTotal, cash,
+      cpfOa: oa, cpfSa: sa, cpfRa: ra, srs,
+      cpfLife: cpfIncome, salary: netSalary,
+      exp: totalExp, liquid: liquidNow,
+      bankrupt: !!bankruptAge,
+    });
+  }
+
+  const finalLiquid = years[years.length - 1].liquid;
+  return { years, bankruptAge, finalWealth: finalLiquid, maxDrawdown };
+}
+
+/* ── Stress sequence: worst early returns then recovery ── */
+function generateStressSequence(nAssets) {
+  const seq = [];
+  for (let y = 0; y < 5; y++) {
+    const eps = Array.from({length: nAssets}, () => -1.5 - Math.random() * 1.0);
+    seq.push(eps);
+  }
+  for (let y = 0; y < 3; y++) {
+    const eps = Array.from({length: nAssets}, () => randn());
+    seq.push(eps);
+  }
+  for (let y = 0; y < 100; y++) {
+    const eps = Array.from({length: nAssets}, () => randn() * 0.5 + 0.2);
+    seq.push(eps);
+  }
+  return seq;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CHART MANAGEMENT
+══════════════════════════════════════════════════════════════ */
+const _charts = {};
+function destroyChart(id) { if (_charts[id]) { _charts[id].destroy(); delete _charts[id]; } }
+
+const CHART_DEFAULTS = {
+  responsive: true, maintainAspectRatio: false,
+  plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => fmtK(c.raw) } } },
+  scales: {
+    x: { ticks: { color: '#536070', font: { size: 11, family: "'IBM Plex Mono'" }, maxTicksLimit: 12 }, grid: { color: 'rgba(255,255,255,.04)' } },
+    y: { ticks: { callback: v => fmtK(v), color: '#536070', font: { size: 11, family: "'IBM Plex Mono'" } }, grid: { color: 'rgba(255,255,255,.04)' } },
+  }
+};
+
+function buildFanChart(ages, p10, p25, p50, p75, p90, retireAge) {
+  destroyChart('fan');
+  const liq = arr => arr.map(r => r.liquid);
+
+  // Retirement vertical line annotation via custom plugin
+  const retirePlugin = {
+    id: 'retireLine',
+    afterDraw(chart) {
+      const {ctx, scales: {x, y}} = chart;
+      const xPos = x.getPixelForValue(retireAge);
+      if (!xPos) return;
+      ctx.save();
+      ctx.beginPath();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = 'rgba(255,71,87,.7)';
+      ctx.lineWidth = 1.5;
+      ctx.moveTo(xPos, y.top);
+      ctx.lineTo(xPos, y.bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255,71,87,.9)';
+      ctx.font = '10px IBM Plex Mono';
+      ctx.fillText('Retire', xPos + 4, y.top + 14);
+      ctx.restore();
+    }
+  };
+
+  _charts.fan = new Chart(document.getElementById('fanChart'), {
+    type: 'line',
+    plugins: [retirePlugin],
+    data: {
+      labels: ages,
+      datasets: [
+        // P10 band bottom
+        {data: liq(p10), fill: '+4', borderColor: 'transparent', backgroundColor: 'rgba(0,212,255,.10)', tension: 0.3, pointRadius: 0},
+        // P25 band
+        {data: liq(p25), fill: '+3', borderColor: 'transparent', backgroundColor: 'rgba(0,212,255,.18)', tension: 0.3, pointRadius: 0},
+        // P50 (invisible fill layer)
+        {data: liq(p50), fill: '+2', borderColor: 'transparent', backgroundColor: 'rgba(0,212,255,.18)', tension: 0.3, pointRadius: 0},
+        // P75 fill
+        {data: liq(p75), fill: '+1', borderColor: 'transparent', backgroundColor: 'rgba(0,212,255,.10)', tension: 0.3, pointRadius: 0},
+        // P90 cap
+        {data: liq(p90), fill: false, borderColor: 'transparent', tension: 0.3, pointRadius: 0},
+        // Median line
+        {data: liq(p50), fill: false, borderColor: '#00d4ff', borderWidth: 2.5, tension: 0.3, pointRadius: 0, label: 'Median'},
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        tooltip: { callbacks: { label: c => c.dataset.label === 'Median' ? 'Median: ' + fmtK(c.raw) : null, filter: i => i.datasetIndex === 5 } }
+      }
+    }
+  });
+}
+
+function buildCPFChart(ages, p50) {
+  destroyChart('cpf');
+  _charts.cpf = new Chart(document.getElementById('cpfChart'), {
+    type: 'line',
+    data: {
+      labels: ages,
+      datasets: [
+        {label: 'OA (2.5%)', data: p50.map(y => y.cpfOa), borderColor: '#ffb300', backgroundColor: 'rgba(255,179,0,.1)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2},
+        {label: 'SA/RA (4%)', data: p50.map(y => y.cpfSa + y.cpfRa), borderColor: '#00e676', backgroundColor: 'rgba(0,230,118,.1)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2},
+        {label: 'SRS', data: p50.map(y => y.srs), borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,.1)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2},
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: { legend: { display: true, labels: { color: '#8fa3c0', font: { size: 11 }, boxWidth: 10 } }, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + fmtK(c.raw) } } }
+    }
+  });
+}
+
+function buildIncomeChart(ages, p50) {
+  destroyChart('income');
+  _charts.income = new Chart(document.getElementById('incomeChart'), {
+    type: 'line',
+    data: {
+      labels: ages,
+      datasets: [
+        {label: 'Salary', data: p50.map(y => y.salary), borderColor: 'transparent', backgroundColor: 'rgba(167,139,250,.4)', fill: true, tension: 0.3, pointRadius: 0},
+        {label: 'CPF LIFE', data: p50.map(y => y.cpfLife), borderColor: 'transparent', backgroundColor: 'rgba(0,230,118,.4)', fill: true, tension: 0.3, pointRadius: 0},
+        {label: 'Total Expenses', data: p50.map(y => y.exp), borderColor: '#ff4757', backgroundColor: 'transparent', borderWidth: 2, borderDash: [5, 3], tension: 0.3, pointRadius: 0, fill: false},
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: { legend: { display: true, labels: { color: '#8fa3c0', font: { size: 11 }, boxWidth: 10 } }, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + fmtK(c.raw) } } }
+    }
+  });
+}
+
+function buildDrawdownChart(allRuns) {
+  destroyChart('drawdown');
+  const dds = allRuns.map(r => r.maxDrawdown * 100).sort((a, b) => a - b);
+  const N = dds.length;
+
+  // Build histogram with 20 buckets
+  const maxDD = Math.min(100, dds[N - 1] * 1.05);
+  const buckets = 20;
+  const bw = maxDD / buckets;
+  const counts = new Array(buckets).fill(0);
+  const labels = [];
+  for (let i = 0; i < buckets; i++) {
+    labels.push(((i + 0.5) * bw).toFixed(0) + '%');
+  }
+  dds.forEach(d => {
+    const idx = Math.min(buckets - 1, Math.floor(d / bw));
+    counts[idx]++;
+  });
+
+  _charts.drawdown = new Chart(document.getElementById('drawdownChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Frequency',
+        data: counts,
+        backgroundColor: counts.map((_, i) => {
+          const pct = (i + 0.5) * bw;
+          if (pct < 20) return 'rgba(0,230,118,.6)';
+          if (pct < 40) return 'rgba(255,179,0,.6)';
+          return 'rgba(255,71,87,.6)';
+        }),
+        borderColor: 'transparent',
+      }]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { title: t => 'Max Drawdown: ~' + t[0].label, label: c => 'Scenarios: ' + c.raw } }
+      },
+      scales: {
+        x: { title: { display: true, text: 'Max Drawdown (%)', color: '#536070', font: { size: 11 } }, ticks: { color: '#536070', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,.04)' } },
+        y: { title: { display: true, text: 'Number of scenarios', color: '#536070', font: { size: 11 } }, ticks: { color: '#536070', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,.04)' } }
+      }
+    }
+  });
+}
+
+function buildDistChart(allRuns, inp) {
+  destroyChart('dist');
+  const finals = allRuns.map(r => r.finalWealth).sort((a, b) => a - b);
+  const N = finals.length;
+
+  const lo = finals[0], hi = finals[N - 1];
+  const buckets = 25;
+  const bw = (hi - lo) / buckets || 1;
+  const counts = new Array(buckets).fill(0);
+  const labels = [];
+  for (let i = 0; i < buckets; i++) {
+    const mid = lo + (i + 0.5) * bw;
+    labels.push(fmtK(mid));
+  }
+  finals.forEach(f => {
+    const idx = clamp(Math.floor((f - lo) / bw), 0, buckets - 1);
+    counts[idx]++;
+  });
+
+  const mean = finals.reduce((s, x) => s + x, 0) / N;
+  const median = finals[Math.floor(N / 2)];
+  const failCount = finals.filter(f => f <= 0).length;
+
+  _charts.dist = new Chart(document.getElementById('distChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Scenarios',
+        data: counts,
+        backgroundColor: counts.map((_, i) => {
+          const mid = lo + (i + 0.5) * bw;
+          if (mid <= 0) return 'rgba(255,71,87,.7)';
+          if (mid < 100000) return 'rgba(255,179,0,.6)';
+          return 'rgba(0,212,255,.5)';
+        }),
+        borderColor: 'transparent',
+      }]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      scales: {
+        x: { ticks: { color: '#536070', font: { size: 9 }, maxRotation: 45 }, grid: { color: 'rgba(255,255,255,.04)' } },
+        y: { ticks: { color: '#536070', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,.04)' } }
+      }
+    }
+  });
+
+  document.getElementById('dist-stats').innerHTML = `
+    <div class="g3">
+      <div class="health-item">
+        <div class="health-lbl">Mean Final Wealth</div>
+        <div class="health-val" style="font-size:16px;color:var(--a1)">${fmtK(mean)}</div>
+      </div>
+      <div class="health-item">
+        <div class="health-lbl">Median Final Wealth</div>
+        <div class="health-val" style="font-size:16px;color:var(--a1)">${fmtK(median)}</div>
+      </div>
+      <div class="health-item">
+        <div class="health-lbl">Mean vs Median Gap</div>
+        <div class="health-val" style="font-size:16px;color:var(--amber)">${mean > median ? '+' : ''}${fmtK(mean - median)}</div>
+        <div class="health-sub">Positive = right-skewed (good)</div>
+      </div>
+    </div>`;
+}
+
+function buildAssetChart(data) {
+  destroyChart('asset');
+  const labels = Object.keys(data).filter(k => data[k] > 0);
+  const values = labels.map(k => data[k]);
+  const colours = ['#00d4ff', '#00e676', '#ffb300', '#ff4757', '#a78bfa', '#f0883e', '#58a6ff'];
+  _charts.asset = new Chart(document.getElementById('assetChart'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: values, backgroundColor: colours.slice(0, labels.length), borderWidth: 2, borderColor: '#131a27' }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#8fa3c0', font: { size: 11 }, boxWidth: 10, padding: 10 } },
+        tooltip: { callbacks: { label: c => c.label + ': ' + fmtK(c.raw) + ' (' + (c.raw / values.reduce((a, b) => a + b, 0) * 100).toFixed(1) + '%)' } }
+      },
+      cutout: '60%'
+    }
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DISPLAY RESULTS
+══════════════════════════════════════════════════════════════ */
+function displayResults(mc) {
+  window._lastMC = mc;
+  const { sr, medianAtRetire, medianFinal, cpfLifeMonthly, bankruptPct, closeCallRate,
+          worstDrawdown, p50, ages, inp, allRuns } = mc;
+
+  /* ── Verdict ── */
+  const safe = sr >= 90, warn = sr >= 70;
+  const v = document.getElementById('verdict');
+  v.className = 'verdict ' + (safe ? 'safe' : warn ? 'warn' : 'fail');
+  document.getElementById('v-emoji').textContent = safe ? '✅' : warn ? '⚠️' : '🔴';
+  document.getElementById('v-head').textContent = safe
+    ? `Solid plan — retire at ${inp.retireAge}`
+    : warn
+    ? `Marginal — retire at ${inp.retireAge}`
+    : `At risk — retire at ${inp.retireAge}`;
+  document.getElementById('v-sub').textContent = safe
+    ? `${sr.toFixed(1)}% of ${inp.mcRuns.toLocaleString()} simulated lifetimes succeeded. You have a comfortable margin.`
+    : warn
+    ? `${sr.toFixed(1)}% success rate. A few adjustments could push you above 90%.`
+    : `Only ${sr.toFixed(1)}% of scenarios succeed. Significant adjustments needed — consider retiring later, spending less, or saving more.`;
+
+  const suggested = sr < 90 ? Math.min(72, inp.retireAge + Math.ceil((90 - sr) / 4)) : null;
+  document.getElementById('v-chips').innerHTML = [
+    `<span class="vchip">Success: <strong>${sr.toFixed(1)}%</strong></span>`,
+    `<span class="vchip">Median at retire: <strong>${fmtK(medianAtRetire)}</strong></span>`,
+    `<span class="vchip">CPF LIFE: <strong>${fmtS(cpfLifeMonthly)}/mo</strong></span>`,
+    `<span class="vchip">Model: <strong>${inp.distModel.replace('_', '-')}</strong></span>`,
+    suggested ? `<span class="vchip" style="border-color:rgba(255,179,0,.3);color:var(--amber)">💡 Try retiring at ${suggested}</span>` : '',
+  ].join('');
+
+  /* ── Metrics ── */
+  const swrPct = medianAtRetire > 0 ? (inp.expRetire * 12 / medianAtRetire * 100).toFixed(1) : '—';
+  document.getElementById('metrics').innerHTML = [
+    {label:'Success Rate', val:sr.toFixed(1)+'%', cls: safe?'g':warn?'a':'r', sub:`Out of ${inp.mcRuns.toLocaleString()} runs`},
+    {label:'Median Wealth at Retire', val:fmtK(medianAtRetire), cls:'g', sub:'Liquid portfolio + cash'},
+    {label:'Median Final Wealth', val:fmtK(medianFinal), cls:'g', sub:'Estate / bequest'},
+    {label:'CPF LIFE Payout', val:fmtS(cpfLifeMonthly)+'/mo', cls:'g', sub:`${inp.cpfScheme} · from age ${inp.cpfLifeAge}`},
+    {label:'Bankruptcy Risk', val:bankruptPct.toFixed(1)+'%', cls: bankruptPct<10?'g':bankruptPct<25?'a':'r', sub:'Liquid assets reach zero'},
+    {label:'Implied Withdrawal Rate', val:swrPct+'%', cls: parseFloat(swrPct)<4?'g':parseFloat(swrPct)<6?'a':'r', sub:'vs 4% rule benchmark'},
+  ].map(m => `<div class="mc-card"><div class="mc-lbl">${m.label}</div><div class="mc-val ${m.cls}">${m.val}</div><div class="mc-sub">${m.sub}</div></div>`).join('');
+
+  /* ── Health check ── */
+  document.getElementById('health-grid').innerHTML = [
+    {label:'Close-call Rate', val: closeCallRate.toFixed(1)+'%', cls: closeCallRate>20?'var(--amber)':'var(--green)', sub:'Success scenarios within S$50k of zero'},
+    {label:'Worst Max Drawdown', val: (worstDrawdown*100).toFixed(0)+'%', cls: worstDrawdown>0.5?'var(--red)':'var(--amber)', sub:'Peak-to-trough across P90 scenarios'},
+    {label:'Bankruptcy Probability', val: bankruptPct.toFixed(1)+'%', cls: bankruptPct<10?'var(--green)':bankruptPct<25?'var(--amber)':'var(--red)', sub:'Ran out of liquid assets'},
+    {label:'Mean vs Median Divergence', val: fmtK(mc.meanFinal - medianFinal), cls: 'var(--a1)', sub:'Positive = right-skewed distribution (healthy)'},
+  ].map(h => `<div class="health-item"><div class="health-lbl">${h.label}</div><div class="health-val" style="color:${h.cls}">${h.val}</div><div class="health-sub">${h.sub}</div></div>`).join('');
+
+  const alerts = [];
+  if (closeCallRate > 20) alerts.push({cls:'warn', txt:`⚠ ${closeCallRate.toFixed(0)}% of winning scenarios came within S$50k of failure. Add a buffer or retire later.`});
+  if (bankruptPct > 20) alerts.push({cls:'warn', txt:`⚠ High bankruptcy risk (${bankruptPct.toFixed(0)}%). Major plan revision needed.`});
+  if (inp.debt > 50000) alerts.push({cls:'warn', txt:`⚠ Carrying S$${inp.debt.toLocaleString()} debt at ${inp.debtRate}%. Clearing this is a guaranteed ${inp.debtRate}% return.`});
+  if (closeCallRate < 10 && sr >= 90) alerts.push({cls:'good', txt:`✓ Successful scenarios have healthy safety margins — your plan is robust.`});
+  if (inp.cpfLifeAge < 70) alerts.push({cls:'info', txt:`ℹ Deferring CPF LIFE to 70 increases payout by ${Math.round((1.07**(70-inp.cpfLifeAge)-1)*100)}%. Consider this if you have bridging income.`});
+  document.getElementById('health-alert').innerHTML = alerts.map(a => `<div class="alert ${a.cls}">${a.txt}</div>`).join('');
+
+  /* ── Percentile table ── */
+  const ages_show = [inp.age, 40, 45, 50, 55, inp.retireAge, inp.retireAge+5, inp.retireAge+10, 75, 80, inp.lifeExp]
+    .filter(a => a >= inp.age && a <= inp.lifeExp)
+    .filter((v, i, arr) => arr.indexOf(v) === i)
+    .sort((a, b) => a - b);
+  const liqAt = (arr, a) => { const y = arr.find(r => r.age === a); return y ? y.liquid : 0; };
+  const thead = `<thead><tr><th>Age</th><th>P10</th><th>P25</th><th>P50</th><th>P75</th><th>P90</th></tr></thead>`;
+  const tbody = `<tbody>${ages_show.map(a => {
+    const isR = a === inp.retireAge;
+    return `<tr class="${isR ? 'retire-row' : ''}"><td>${a}${isR ? ' →' : ''}</td>${[mc.p10, mc.p25, mc.p50, mc.p75, mc.p90].map(arr => `<td>${fmtK(liqAt(arr, a))}</td>`).join('')}</tr>`;
+  }).join('')}</tbody>`;
+  document.getElementById('pct-table').innerHTML = thead + tbody;
+
+  /* ── Asset breakdown ── */
+  const retSnap = p50.find(y => y.age === inp.retireAge);
+  if (retSnap) {
+    const ab = {
+      'Investments': Math.round(retSnap.port),
+      'Cash & savings': Math.round(retSnap.cash),
+      'CPF OA': Math.round(retSnap.cpfOa),
+      'CPF SA/RA': Math.round(retSnap.cpfSa + retSnap.cpfRa),
+      'SRS': Math.round(retSnap.srs),
+    };
+    const total = Object.values(ab).reduce((s, v) => s + v, 0);
+    mc.assetBreakdown = ab;
+    buildAssetChart(ab);
+    document.getElementById('asset-table').innerHTML =
+      Object.entries(ab).filter(([,v]) => v > 0).map(([k, v]) =>
+        `<tr><td>${k}</td><td>${fmtK(v)} <span style="color:var(--t3);font-size:10px">(${(v/total*100).toFixed(1)}%)</span></td></tr>`
+      ).join('') +
+      `<tr><td><strong>Total</strong></td><td><strong>${fmtK(total)}</strong></td></tr>`;
+
+    // SWR info
+    const swrRate = total > 0 ? (inp.expRetire * 12 / total * 100) : 0;
+    document.getElementById('swr-info').innerHTML = `
+      <div class="alert ${swrRate < 4 ? 'good' : swrRate < 6 ? 'warn' : 'warn'}">
+        Implied withdrawal rate: <strong>${swrRate.toFixed(1)}%</strong><br>
+        ${swrRate < 4 ? '✓ Below 4% rule — historically very sustainable' : swrRate < 6 ? '⚠ Above 4% rule — survivable but watch sequence risk' : '⚠ High withdrawal rate — significant failure risk'}
+      </div>`;
+  }
+
+  /* ── Recommendations ── */
+  const recs = [];
+  if (sr < 90) {
+    if (suggested) recs.push({t:'warn', txt:`Your success rate is ${sr.toFixed(0)}%. Target ≥90%. Retiring at ${suggested} instead may push you over the threshold.`});
+    else recs.push({t:'warn', txt:`Success rate is ${sr.toFixed(0)}%. Reduce retirement spending, invest more aggressively, or defer retirement.`});
+  }
+  if (inp.saTopup < 7000) recs.push({t:'info', txt:`Top up your SA by S$${(8000-inp.saTopup).toLocaleString()}/yr more for full S$8,000 tax relief. SA earns 4% guaranteed — better than most bonds.`});
+  if (inp.cpfLifeAge < 70) recs.push({t:'info', txt:`Deferring CPF LIFE to age 70 increases your payout by ~${Math.round((1.07**(70-inp.cpfLifeAge)-1)*100)}% for life. One of the best risk-free returns available.`});
+  if (inp.srsMonthly < 500) recs.push({t:'info', txt:`SRS contributions (max S$15,300/yr) reduce taxable income and compound tax-free until withdrawal. Particularly valuable in higher income brackets.`});
+  if (closeCallRate > 20) recs.push({t:'warn', txt:`${closeCallRate.toFixed(0)}% of successful scenarios came dangerously close to zero. Consider a 12-month cash emergency buffer at retirement.`});
+  if (inp.distModel === 'normal') recs.push({t:'info', txt:`Try the "Fat-tail" or "Regime Switching" model — normal GBM underestimates crash risk. If your plan survives those, it's genuinely robust.`});
+  if (inp.withdrawStrat === 'proportional') recs.push({t:'info', txt:`The Conservative-first or Dynamic withdrawal strategy often outperforms proportional in bear markets — consider switching.`});
+  recs.push({t:'good', txt:`Even in P10 worst-case scenarios, CPF LIFE still pays ${fmtS(cpfLifeMonthly)}/month for life from age ${inp.cpfLifeAge}. This guaranteed floor is your retirement bedrock.`});
+  recs.push({t:'info', txt:`Review this simulation annually. Major life events (job change, property purchase, health changes, children) all warrant a fresh run.`});
+  document.getElementById('rec-list').innerHTML = recs.map(r =>
+    `<li class="rec-item"><div class="rec-ico ${r.t}">${r.t==='warn'?'!':r.t==='good'?'✓':r.t==='risk'?'⚡':'i'}</div><span>${r.txt}</span></li>`
+  ).join('');
+
+  /* ── Charts ── */
+  buildFanChart(ages, mc.p10, mc.p25, mc.p50, mc.p75, mc.p90, inp.retireAge);
+  buildCPFChart(ages, p50);
+  buildIncomeChart(ages, p50);
+  buildDrawdownChart(allRuns);
+  buildDistChart(allRuns, inp);
+
+  /* ── Show ── */
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('results').classList.add('show');
+  document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MAIN SIMULATION ORCHESTRATOR
+══════════════════════════════════════════════════════════════ */
+async function runSimulation() {
+  if (!validate()) return;
+
+  const btn = document.getElementById('runBtn');
+  const prog = document.getElementById('progFill');
+  btn.classList.add('running');
+  btn.disabled = true;
+  prog.style.width = '0%';
+
+  // Read all inputs
+  const inp = {
+    age: gn('age') | 0,
+    retireAge: gn('retireAge') | 0,
+    lifeExp: gn('lifeExp') | 0,
+    salary: gn('salary'),
+    bonusMths: gn('bonusMths'),
+    salaryGrowth: gn('salaryGrowth'),
+    srsMonthly: gn('srsMonthly'),
+    srsRet: gn('srsRet'),
+    cpfOA: gn('cpfOA'),
+    cpfSA: gn('cpfSA'),
+    cpfMA: gn('cpfMA'),
+    saTopup: gn('saTopup'),
+    cpfScheme: gs('cpfScheme'),
+    cpfLifePlan: gs('cpfLifePlan'),
+    cpfLifeAge: gn('cpfLifeAge') | 0,
+    assets: assets.map(a => ({...a})),
+    monthlyInv: gn('monthlyInv'),
+    cash: gn('cash'),
+    cashRet: gn('cashRet'),
+    debt: gn('debt'),
+    debtMonthly: gn('debtPay'),
+    debtRate: gn('debtRate'),
+    expNow: gn('expNow'),
+    expRetire: gn('expRetire'),
+    inflation: gn('inflation'),
+    healthCost: gn('healthCost'),
+    healthShocks: gs('healthShocks') === '1',
+    mcRuns: parseInt(gs('mcRuns')) || 1000,
+    distModel: gs('distModel'),
+    withdrawStrat: gs('withdrawStrat'),
+    corrMode: gs('corrMode'),
+  };
+
+  // Validate/clamp
+  inp.cpfLifeAge = clamp(inp.cpfLifeAge, 65, 70);
+  inp.lifeExp = clamp(inp.lifeExp, inp.retireAge + 5, 105);
+
+  // Build Cholesky decomposition for correlations
+  const corrMatrix = CORR_MATRICES[inp.corrMode] || CORR_MATRICES.typical;
+  const cholL = cholesky(corrMatrix);
+
+  // Select RNG function
+  let rngFn;
+  if (inp.distModel === 'fat_tail') rngFn = () => randn_t(7);
+  else if (inp.distModel === 'historical') rngFn = randn_hist;
+  else rngFn = randn; // normal, regime, stress all use normal base
+
+  const N = inp.mcRuns;
+  const runs = [];
+  const CHUNK = 50;
+
+  for (let i = 0; i < N; i += CHUNK) {
+    await new Promise(r => setTimeout(r, 0)); // yield to UI thread
+    for (let j = i; j < Math.min(i + CHUNK, N); j++) {
+      runs.push(simulateRun(inp, cholL, rngFn));
+    }
+    prog.style.width = (Math.min(i + CHUNK, N) / N * 100) + '%';
+  }
+  prog.style.width = '100%';
+
+  // Sort by final wealth for percentile computation
+  runs.sort((a, b) => a.finalWealth - b.finalWealth);
+  const px = p => runs[clamp(Math.floor(N * p), 0, N - 1)];
+  const [p10, p25, p50, p75, p90] = [0.10, 0.25, 0.50, 0.75, 0.90].map(px);
+
+  const success = runs.filter(r => !r.bankruptAge);
+  const sr = success.length / N * 100;
+  const liqAt = (run, age) => { const y = run.years.find(r => r.age === age); return y ? y.liquid : 0; };
+  const medianAtRetire = liqAt(p50, inp.retireAge);
+  const medianFinal = p50.finalWealth;
+  const meanFinal = runs.reduce((s, r) => s + r.finalWealth, 0) / N;
+  const cpfLifeMonthly = (p50.years.find(y => y.cpfLife > 0)?.cpfLife || 0) / 12;
+  const bankruptPct = (N - success.length) / N * 100;
+  const closeCallRate = success.filter(r => {
+    const minL = Math.min(...r.years.filter(y => y.age >= inp.retireAge).map(y => y.liquid));
+    return minL >= 0 && minL < 50000;
+  }).length / N * 100;
+  const worstDrawdown = runs.reduce((w, r) => r.maxDrawdown > w ? r.maxDrawdown : w, 0);
+  const ages = p50.years.map(y => y.age);
+
+  const mc = {
+    sr, medianAtRetire, medianFinal, meanFinal,
+    cpfLifeMonthly, bankruptPct, closeCallRate, worstDrawdown,
+    inp,
+    p10: p10.years, p25: p25.years, p50: p50.years, p75: p75.years, p90: p90.years,
+    ages,
+    assetBreakdown: {},
+    allRuns: runs,
+  };
+
+  btn.classList.remove('running');
+  btn.disabled = false;
+  displayResults(mc);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════════════════════ */
+renderAssets();
+</script>
+</body>
+</html>
